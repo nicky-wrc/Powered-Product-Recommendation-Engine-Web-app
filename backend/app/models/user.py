@@ -23,3 +23,9 @@ class User(Base):
 
     interactions: Mapped[list["Interaction"]] = relationship("Interaction", back_populates="user")
     recommendations: Mapped[list["Recommendation"]] = relationship("Recommendation", back_populates="user")
+    orders: Mapped[list["Order"]] = relationship("Order", back_populates="user")
+    cart_items: Mapped[list["CartItem"]] = relationship(
+        "CartItem",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

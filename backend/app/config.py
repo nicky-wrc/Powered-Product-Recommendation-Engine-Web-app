@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7
-    cors_origins: str = "http://localhost:3000"
+    # Comma-separated explicit origins. With cors_allow_lan_regex, loopback any port and [::1] also match.
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # When true (default), allow dev Origins: localhost/127.0.0.1/[::1] (any port) + 192.168.* / 10.* LAN.
+    cors_allow_lan_regex: bool = True
 
 
 settings = Settings()
