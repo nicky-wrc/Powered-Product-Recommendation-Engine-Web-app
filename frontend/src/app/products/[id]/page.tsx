@@ -1,24 +1,90 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductShareRow } from "@/components/ProductShareRow";
 import { SiteHeader } from "@/components/SiteHeader";
 import { TrackProductView } from "@/components/TrackProductView";
 import { fetchProduct, isLocalUploadImageUrl, productImageUrl } from "@/lib/api";
+import { absoluteUrl } from "@/lib/siteUrl";
+import { cache } from "react";
 
 type Props = { params: Promise<{ id: string }> };
 
+const getProductPageData = cache(fetchProduct);
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { id } = await params;
+  const data = await getProductPageData(id);
+  if (!data) return { title: "Product" };
+
+  const p = data.product;
+  const img = productImageUrl(p);
+  const priceStr = `$${p.price.toFixed(2)}`;
+  const rawDesc = p.description?.replace(/\s+/g, " ").trim() ?? "";
+  const description =
+    rawDesc.length > 0
+      ? rawDesc.slice(0, 155) + (rawDesc.length > 155 ? "…" : "")
+      : `${p.name} — ${priceStr}${p.category ? ` · ${p.category}` : ""}`;
+
+  const images = img
+    ? [
+        {
+          url: img,
+          alt: p.name,
+        },
+      ]
+    : undefined;
+
+  return {
+    title: p.name,
+    description,
+    openGraph: {
+      title: p.name,
+      description,
+      type: "website",
+      url: `/products/${p.id}`,
+      images,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: p.name,
+      description,
+      images: images?.map((i) => i.url),
+    },
+  };
+}
+
 export default async function ProductDetailPage({ params }: Props) {
   const { id } = await params;
-  const data = await fetchProduct(id);
+  const data = await getProductPageData(id);
   if (!data) notFound();
   const { product: p, similar_products, bought_together } = data;
   const heroImg = productImageUrl(p);
+  const shareUrl = absoluteUrl(`/products/${p.id}`);
+  const imageAbsolute = heroImg ? absoluteUrl(heroImg) : undefined;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: p.name,
+    description: p.description ?? undefined,
+    image: imageAbsolute ? [imageAbsolute] : undefined,
+    offers: {
+      "@type": "Offer",
+      url: shareUrl,
+      priceCurrency: "USD",
+      price: p.price,
+      availability: p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    },
+  };
 
   return (
     <div className="min-h-screen">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <TrackProductView product={p} />
       <SiteHeader />
       <main className="mx-auto max-w-6xl space-y-12 px-4 py-10">
@@ -87,6 +153,7 @@ export default async function ProductDetailPage({ params }: Props) {
                 ))}
               </div>
             ) : null}
+            <ProductShareRow url={shareUrl} title={p.name} />
             <ProductActions product={p} />
           </div>
         </div>
