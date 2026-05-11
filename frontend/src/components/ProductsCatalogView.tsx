@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ProductCard } from "@/components/ProductCard";
-import { fetchProducts, formatNetworkError, type Product } from "@/lib/api";
+import { fetchProducts, fetchProductSuggestions, formatNetworkError, type CatalogSort, type Product, type ProductSuggestion } from "@/lib/api";
 
 type Props = {
   categories: string[];
@@ -13,15 +14,17 @@ type Props = {
   initialPage: number;
   initialQ: string;
   initialCategory: string | undefined;
+  initialSort: CatalogSort;
   pageSize: number;
 };
 
-function replaceCatalogUrl(q: string, category: string | undefined, page: number) {
+function replaceCatalogUrl(q: string, category: string | undefined, page: number, sort: CatalogSort) {
   const p = new URLSearchParams();
   if (category) p.set("category", category);
   const t = q.trim();
   if (t) p.set("q", t);
   if (page > 1) p.set("page", String(page));
+  if (sort !== "newest") p.set("sort", sort);
   const qs = p.toString();
   const path = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
   window.history.replaceState(null, "", path);
@@ -35,17 +38,21 @@ export function ProductsCatalogView({
   initialPage,
   initialQ,
   initialCategory,
+  initialSort,
   pageSize,
 }: Props) {
   const [query, setQuery] = useState(initialQ);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQ);
   const [category, setCategory] = useState<string | undefined>(initialCategory);
+  const [sort, setSort] = useState<CatalogSort>(initialSort);
   const [page, setPage] = useState(initialPage);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [total, setTotal] = useState(initialTotal);
   const [totalPages, setTotalPages] = useState(initialTotalPages);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([]);
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   const skipFetchOnce = useRef(true);
   const filtersMounted = useRef(false);
@@ -53,6 +60,26 @@ export function ProductsCatalogView({
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedQuery(query), 300);
     return () => window.clearTimeout(id);
+  }, [query]);
+
+  useEffect(() => {
+    const q = query.trim();
+    const ac = new AbortController();
+    const tid = window.setTimeout(() => {
+      if (q.length < 1) {
+        setSuggestions([]);
+        return;
+      }
+      void fetchProductSuggestions(q, ac.signal)
+        .then((rows) => setSuggestions(rows))
+        .catch(() => {
+          if (!ac.signal.aborted) setSuggestions([]);
+        });
+    }, 200);
+    return () => {
+      ac.abort();
+      window.clearTimeout(tid);
+    };
   }, [query]);
 
   useEffect(() => {
@@ -64,7 +91,7 @@ export function ProductsCatalogView({
   }, [debouncedQuery, category]);
 
   const runFetch = useCallback(
-    async (q: string, cat: string | undefined, pageNum: number) => {
+    async (q: string, cat: string | undefined, pageNum: number, sortOrder: CatalogSort) => {
       setLoading(true);
       setErr(null);
       try {
@@ -73,6 +100,7 @@ export function ProductsCatalogView({
           limit: pageSize,
           search: q.trim() || undefined,
           category: cat || undefined,
+          sort: sortOrder,
         });
         const tp = Math.max(1, r.total_pages);
         let currentPage = pageNum;
@@ -84,12 +112,13 @@ export function ProductsCatalogView({
             limit: pageSize,
             search: q.trim() || undefined,
             category: cat || undefined,
+            sort: sortOrder,
           });
         }
         setProducts(r.products);
         setTotal(r.total);
         setTotalPages(Math.max(1, r.total_pages));
-        replaceCatalogUrl(q, cat, currentPage);
+        replaceCatalogUrl(q, cat, currentPage, sortOrder);
       } catch (e) {
         setErr(formatNetworkError(e));
       } finally {
@@ -104,11 +133,16 @@ export function ProductsCatalogView({
       skipFetchOnce.current = false;
       return;
     }
-    void runFetch(debouncedQuery, category, page);
-  }, [debouncedQuery, category, page, runFetch]);
+    void runFetch(debouncedQuery, category, page, sort);
+  }, [debouncedQuery, category, page, sort, runFetch]);
 
   function selectCategory(next: string | undefined) {
     setCategory(next);
+  }
+
+  function selectSort(next: CatalogSort) {
+    setSort(next);
+    setPage(1);
   }
 
   const displayQ = query.trim();
@@ -129,19 +163,53 @@ export function ProductsCatalogView({
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
-            <label className="sr-only" htmlFor="catalog-search">
+            <label className="sr-only" id="catalog-search-label" htmlFor="catalog-search">
               Search products
             </label>
-            <input
-              id="catalog-search"
-              type="search"
-              enterKeyHint="search"
-              autoComplete="off"
-              placeholder="Search products…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-900 shadow-inner outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-50 sm:min-w-[16rem] sm:max-w-md"
-            />
+            <div className="relative w-full sm:min-w-[16rem] sm:max-w-md">
+              <input
+                id="catalog-search"
+                type="search"
+                role="combobox"
+                enterKeyHint="search"
+                autoComplete="off"
+                placeholder="Search products…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setSuggestOpen(true)}
+                onBlur={() => window.setTimeout(() => setSuggestOpen(false), 180)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSuggestOpen(false);
+                }}
+                aria-autocomplete="list"
+                aria-expanded={suggestOpen && suggestions.length > 0}
+                aria-controls="catalog-search-suggestions"
+                className="w-full rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm text-stone-900 shadow-inner outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-50"
+              />
+              {suggestOpen && suggestions.length > 0 ? (
+                <ul
+                  id="catalog-search-suggestions"
+                  role="listbox"
+                  aria-labelledby="catalog-search-label"
+                  className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-auto rounded-xl border border-stone-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  {suggestions.map((s) => (
+                    <li key={s.id} role="option" aria-selected="false">
+                      <Link
+                        href={`/products/${s.id}`}
+                        className="flex flex-col gap-0.5 px-4 py-2.5 text-left text-sm hover:bg-teal-50 dark:hover:bg-teal-950/50"
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        <span className="font-medium text-stone-900 dark:text-stone-100">{s.name}</span>
+                        {s.category ? (
+                          <span className="text-xs text-stone-500 dark:text-stone-400">{s.category}</span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </div>
         </div>
         <div className="mt-6 flex flex-wrap gap-2">
@@ -170,6 +238,25 @@ export function ProductsCatalogView({
               {c}
             </button>
           ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-stone-200/80 pt-4 dark:border-zinc-800">
+          <label
+            htmlFor="catalog-sort"
+            className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400"
+          >
+            Sort by
+          </label>
+          <select
+            id="catalog-sort"
+            value={sort}
+            onChange={(e) => selectSort(e.target.value as CatalogSort)}
+            className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-100"
+          >
+            <option value="newest">Newest</option>
+            <option value="price_asc">Price: low to high</option>
+            <option value="price_desc">Price: high to low</option>
+            <option value="name_asc">Name A–Z</option>
+          </select>
         </div>
         {err ? (
           <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">

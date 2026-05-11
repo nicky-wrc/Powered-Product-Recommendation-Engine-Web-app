@@ -64,6 +64,14 @@ export type User = {
   email: string;
   name: string;
   is_admin: boolean;
+  avatar_url?: string | null;
+  phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
 };
 
 export type AuthResponse = {
@@ -83,6 +91,68 @@ export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
+}
+
+/** Dispatch after profile / avatar changes so the header can refetch `/auth/me`. */
+export const PROFILE_UPDATED_EVENT = "nickyshop-profile-updated";
+
+export function notifyProfileUpdated(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(PROFILE_UPDATED_EVENT));
+}
+
+export type ProfileUpdatePayload = {
+  name?: string;
+  phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+};
+
+export async function fetchMe(token: string): Promise<User> {
+  const r = await fetch(`${API_BASE}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function patchProfile(token: string, body: ProfileUpdatePayload): Promise<User> {
+  const r = await fetch(`${API_BASE}/api/auth/me`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function uploadProfileAvatar(token: string, file: File): Promise<User> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${API_BASE}/api/auth/me/avatar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function deleteProfileAvatar(token: string): Promise<User> {
+  const r = await fetch(`${API_BASE}/api/auth/me/avatar`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
 }
 
 /** FastAPI/Pydantic validation errors (422) or string detail */
@@ -158,6 +228,15 @@ export async function fetchProductCategories(): Promise<string[]> {
   return r.json();
 }
 
+export const CATALOG_SORTS = ["newest", "price_asc", "price_desc", "name_asc"] as const;
+export type CatalogSort = (typeof CATALOG_SORTS)[number];
+
+export function parseCatalogSort(raw: string | undefined): CatalogSort {
+  const s = raw?.trim();
+  if (s === "price_asc" || s === "price_desc" || s === "name_asc" || s === "newest") return s;
+  return "newest";
+}
+
 export async function fetchProducts(params: {
   page?: number;
   limit?: number;
@@ -165,6 +244,7 @@ export async function fetchProducts(params: {
   search?: string;
   /** Only products with null or empty category */
   uncategorized?: boolean;
+  sort?: CatalogSort;
 }): Promise<{ products: Product[]; total: number; page: number; total_pages: number }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set("page", String(params.page));
@@ -172,10 +252,29 @@ export async function fetchProducts(params: {
   if (params.category) sp.set("category", params.category);
   if (params.search) sp.set("search", params.search);
   if (params.uncategorized) sp.set("uncategorized", "true");
+  if (params.sort && params.sort !== "newest") sp.set("sort", params.sort);
   const r = await fetch(`${API_BASE}/api/products?${sp.toString()}`, {
     next: { revalidate: 15 },
   });
   if (!r.ok) throw new Error("Failed to load products");
+  return r.json();
+}
+
+export type ProductSuggestion = {
+  id: string;
+  name: string;
+  category: string | null;
+};
+
+export async function fetchProductSuggestions(q: string, signal?: AbortSignal): Promise<ProductSuggestion[]> {
+  const t = q.trim();
+  if (t.length < 1) return [];
+  const sp = new URLSearchParams({ q: t, limit: "8" });
+  const r = await fetch(`${API_BASE}/api/products/suggest?${sp.toString()}`, {
+    cache: "no-store",
+    signal,
+  });
+  if (!r.ok) throw new Error("Failed to load suggestions");
   return r.json();
 }
 
@@ -389,6 +488,42 @@ export async function postOrder(
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
   return r.json();
+}
+
+export type PaymentStatus = { stripe_checkout_available: boolean };
+
+export async function fetchPaymentStatus(): Promise<PaymentStatus> {
+  const r = await fetch(`${API_BASE}/api/payments/status`, { cache: "no-store" });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function createStripeCheckoutSession(
+  token: string,
+  items: { product_id: string; quantity: number }[],
+): Promise<{ url: string }> {
+  const r = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ items }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function syncStripeCheckoutSession(token: string, session_id: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/payments/sync-session`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ session_id }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
 }
 
 export async function fetchMyOrders(token: string): Promise<OrderPublic[]> {

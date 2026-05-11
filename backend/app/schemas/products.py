@@ -38,6 +38,14 @@ class ProductListResponse(BaseModel):
     total_pages: int
 
 
+class ProductSuggestItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    category: str | None = None
+
+
 class ProductWithSimilar(BaseModel):
     product: ProductPublic
     similar_products: list[ProductPublic]

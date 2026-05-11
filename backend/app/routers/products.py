@@ -1,4 +1,5 @@
 import math
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.product import Product
-from app.schemas.products import ProductListResponse, ProductPublic, ProductWithSimilar, product_public
+from app.schemas.products import (
+    ProductListResponse,
+    ProductSuggestItem,
+    ProductWithSimilar,
+    product_public,
+)
 from app.services.bought_together import bought_together_products
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -55,13 +61,25 @@ def list_products(
     category: str | None = None,
     search: str | None = None,
     uncategorized: bool = Query(False, description="If true, only products with no category (null or empty)"),
+    sort: Literal["newest", "price_asc", "price_desc", "name_asc"] = Query(
+        "newest",
+        description="Sort order: newest (created_at desc), price asc/desc, name A–Z",
+    ),
     db: Session = Depends(get_db),
 ) -> ProductListResponse:
     stmt = select(Product)
     count_stmt = select(func.count()).select_from(Product)
     stmt, count_stmt = _apply_filters(stmt, count_stmt, category, search, uncategorized=uncategorized)
     total = int(db.scalar(count_stmt) or 0)
-    stmt = stmt.order_by(Product.created_at.desc()).offset((page - 1) * limit).limit(limit)
+    if sort == "price_asc":
+        stmt = stmt.order_by(Product.price.asc(), Product.id.asc())
+    elif sort == "price_desc":
+        stmt = stmt.order_by(Product.price.desc(), Product.id.asc())
+    elif sort == "name_asc":
+        stmt = stmt.order_by(Product.name.asc(), Product.id.asc())
+    else:
+        stmt = stmt.order_by(Product.created_at.desc())
+    stmt = stmt.offset((page - 1) * limit).limit(limit)
     rows = db.scalars(stmt).all()
     total_pages = math.ceil(total / limit) if limit else 0
     return ProductListResponse(
@@ -70,6 +88,22 @@ def list_products(
         page=page,
         total_pages=total_pages,
     )
+
+
+@router.get("/suggest", response_model=list[ProductSuggestItem])
+def suggest_products(
+    q: str = Query("", max_length=120),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+) -> list[ProductSuggestItem]:
+    """Prefix/substring match on product name for search autocomplete."""
+    term = (q or "").strip()
+    if len(term) < 1:
+        return []
+    pattern = f"%{term}%"
+    stmt = select(Product).where(Product.name.ilike(pattern)).order_by(Product.name.asc()).limit(limit)
+    rows = db.scalars(stmt).all()
+    return [ProductSuggestItem(id=p.id, name=p.name, category=p.category) for p in rows]
 
 
 @router.get("/{product_id}", response_model=ProductWithSimilar)

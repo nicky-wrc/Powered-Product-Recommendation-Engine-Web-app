@@ -6,10 +6,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { FreeShippingProgress } from "@/components/FreeShippingProgress";
 import {
   API_BASE,
+  createStripeCheckoutSession,
   deleteCartItem,
   fetchCart,
+  fetchPaymentStatus,
   formatNetworkError,
   getToken,
   patchCartItem,
@@ -32,6 +35,13 @@ export default function CartPage() {
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [stripeAvailable, setStripeAvailable] = useState(false);
+
+  useEffect(() => {
+    void fetchPaymentStatus()
+      .then((s) => queueMicrotask(() => setStripeAvailable(s.stripe_checkout_available)))
+      .catch(() => queueMicrotask(() => setStripeAvailable(false)));
+  }, []);
 
   useEffect(() => {
     const sync = () => {
@@ -118,6 +128,27 @@ export default function CartPage() {
     }
   }
 
+  async function payWithStripe() {
+    const token = getToken();
+    if (!token) {
+      router.push("/login?next=/cart");
+      return;
+    }
+    if (lines.length === 0) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      const { url } = await createStripeCheckoutSession(
+        token,
+        lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
+      );
+      window.location.assign(url);
+    } catch (e) {
+      setErr(formatNetworkError(e));
+      setBusy(false);
+    }
+  }
+
   const subtotal = cartSubtotal(lines);
 
   return (
@@ -127,8 +158,9 @@ export default function CartPage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Cart</h1>
           <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-            Signed-in users: cart syncs to the server. Checkout creates an <strong>order</strong>, updates stock, and
-            records purchase signals. Guests: browser storage until you log in (then merged to the server).
+            Signed-in users: cart syncs to the server. Pay with <strong>Stripe</strong> (test mode) when configured,
+            or use <strong>demo checkout</strong> for classwork without keys. Both paths create an order, update stock,
+            and record purchase signals. Guests: browser storage until you log in (then merged to the server).
           </p>
         </div>
 
@@ -141,6 +173,7 @@ export default function CartPage() {
           </p>
         ) : (
           <>
+            <FreeShippingProgress subtotal={subtotal} />
             <ul className="divide-y divide-stone-200 overflow-hidden rounded-3xl border border-stone-200/90 bg-white/90 shadow-sm dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-950/90">
               {lines.map((line) => {
                 const displaySrc = productImageUrl({
@@ -225,16 +258,35 @@ export default function CartPage() {
               </p>
               <div className="flex flex-col gap-2 sm:items-end">
                 {err ? <p className="text-sm text-red-600 dark:text-red-400">{err}</p> : null}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void checkout()}
-                  className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-600/25 transition hover:from-teal-500 hover:to-emerald-500 disabled:opacity-60"
-                >
-                  {busy ? "Placing order…" : "Place order (demo)"}
-                </button>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+                  {stripeAvailable ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void payWithStripe()}
+                      className="rounded-xl bg-stone-900 px-8 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-stone-800 disabled:opacity-60 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
+                    >
+                      {busy ? "Redirecting…" : "Pay with card (Stripe test)"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void checkout()}
+                    className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-600/25 transition hover:from-teal-500 hover:to-emerald-500 disabled:opacity-60"
+                  >
+                    {busy ? "Placing order…" : "Place order (demo, no payment)"}
+                  </button>
+                </div>
                 <p className="text-xs text-stone-500 dark:text-stone-400">
-                  Requires login ·{" "}
+                  Requires login · Stripe uses{" "}
+                  <a
+                    href="https://stripe.com/docs/testing"
+                    className="font-medium text-teal-700 underline dark:text-teal-400"
+                  >
+                    test cards
+                  </a>
+                  . API{" "}
                   <code className="rounded bg-stone-100 px-1 dark:bg-zinc-900">{API_BASE}</code>
                 </p>
               </div>

@@ -8,10 +8,10 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.core.http_errors import register_exception_handlers
-from app.database import Base, SessionLocal, engine
+from app.database import Base, SessionLocal, apply_runtime_schema_patches, engine
 from app.middleware.request_id import RequestIdMiddleware
 from app.models import CartItem, Interaction, Order, OrderItem, Product, Recommendation, User  # noqa: F401
-from app.routers import admin, auth, cart, events, health, orders, products, recommendations
+from app.routers import admin, auth, cart, events, health, orders, payments, products, recommendations
 from app.services.bootstrap_admin import ensure_bootstrap_admin
 from app.services.seed import (
     insert_missing_demo_products,
@@ -19,13 +19,14 @@ from app.services.seed import (
     seed_products_if_empty,
     sync_demo_catalog_images,
 )
-from app.upload_paths import PRODUCT_IMAGES_DIR, UPLOADS_ROOT
+from app.upload_paths import PRODUCT_IMAGES_DIR, PROFILE_IMAGES_DIR, UPLOADS_ROOT
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if os.getenv("SKIP_DB_BOOTSTRAP") != "1":
         Base.metadata.create_all(bind=engine)
+        apply_runtime_schema_patches()
         db = SessionLocal()
         try:
             seed_products_if_empty(db)
@@ -43,6 +44,7 @@ mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("image/avif", ".avif")
 mimetypes.add_type("image/svg+xml", ".svg")
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+PROFILE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Recommendation Engine API", version=settings.app_version, lifespan=lifespan)
 register_exception_handlers(app)
@@ -70,6 +72,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
+app.include_router(payments.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")

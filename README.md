@@ -115,7 +115,7 @@ npm start
 
 | Area | File | Notes |
 |------|------|--------|
-| Backend | `backend/.env` | `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, optional `CORS_ALLOW_LAN_REGEX`, `REDIS_URL`, bootstrap admin vars |
+| Backend | `backend/.env` | `DATABASE_URL`, `SECRET_KEY`, `CORS_ORIGINS`, optional `CORS_ALLOW_LAN_REGEX`, `REDIS_URL`, bootstrap admin vars, optional **Stripe** (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_APP_URL`) |
 | Frontend | `frontend/.env.local` | Usually empty for local dev; `NEXT_PUBLIC_API_URL` only if you bypass rewrites; `API_INTERNAL_URL` for SSR in Docker |
 
 See `backend/.env.example` and `frontend/.env.local.example` for comments.
@@ -126,7 +126,18 @@ See `backend/.env.example` and `frontend/.env.local.example` for comments.
 - `GET /api/products/categories` — Distinct non-empty categories
 - `GET /api/products/{id}` — Product with similar and bought-together lists
 - `GET /health` and `GET /health/ready` — Liveness and readiness (database, Redis)
+- `POST /api/orders` — Create order (demo `payment_method`), decrement stock, clear cart
+- `POST /api/payments/create-checkout-session` — Start Stripe Checkout (needs `STRIPE_SECRET_KEY`); returns `{ url }`
+- `POST /api/payments/sync-session` — After Stripe success redirect, confirm payment and create order (handy without webhook)
+- `POST /api/payments/webhook` — Stripe webhook for `checkout.session.completed` (set `STRIPE_WEBHOOK_SECRET`)
 - Admin routes under `POST/PUT/DELETE /api/admin/...` with a valid JWT for an `is_admin` user
+
+### Stripe (optional, test mode)
+
+1. Keys: [Stripe Dashboard → API keys (test)](https://dashboard.stripe.com/test/apikeys).
+2. `backend/.env`: `STRIPE_SECRET_KEY=sk_test_...`, and `PUBLIC_APP_URL` = Next.js URL (default `http://localhost:3000`). For webhooks locally: `stripe listen --forward-to localhost:8000/api/payments/webhook` and set `STRIPE_WEBHOOK_SECRET` to the signing secret.
+3. Cart: **Pay with card (Stripe test)**; [test cards](https://stripe.com/docs/testing) e.g. `4242 4242 4242 4242`.
+4. After pay you land on `/orders`; the UI calls **sync-session** so orders appear without a webhook. **Place order (demo, no payment)** stays available for classrooms without Stripe.
 
 ## Scripts
 

@@ -1,0 +1,359 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.board{padding:1rem 0}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.fbtn{padding:5px 14px;font-size:13px;border-radius:20px;border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);cursor:pointer;transition:all .15s}
+.fbtn:hover{background:var(--color-background-secondary)}
+.fbtn.active{background:var(--color-background-primary);color:var(--color-text-primary);border-color:var(--color-border-primary);font-weight:500}
+.section{margin-bottom:28px}
+.section-title{font-size:13px;font-weight:500;color:var(--color-text-secondary);letter-spacing:.04em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.section-title span{display:inline-block;width:8px;height:8px;border-radius:50%}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:14px;cursor:pointer;transition:border-color .15s,transform .1s;position:relative}
+.card:hover{border-color:var(--color-border-secondary);transform:translateY(-1px)}
+.card.done{opacity:.5}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+.card-icon{font-size:20px;line-height:1;color:var(--color-text-secondary)}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500;white-space:nowrap}
+.badge.hard{background:var(--color-background-danger);color:var(--color-text-danger)}
+.badge.medium{background:var(--color-background-warning);color:var(--color-text-warning)}
+.badge.easy{background:var(--color-background-success);color:var(--color-text-success)}
+.badge.ai{background:var(--color-background-info);color:var(--color-text-info)}
+.card-name{font-size:14px;font-weight:500;color:var(--color-text-primary);line-height:1.3;margin-bottom:4px}
+.card-desc{font-size:12px;color:var(--color-text-secondary);line-height:1.5}
+.card-tag{display:inline-block;font-size:11px;margin-top:8px;padding:2px 8px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:20px}
+.stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px;text-align:center}
+.stat-num{font-size:22px;font-weight:500;color:var(--color-text-primary)}
+.stat-label{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.prog-bar{height:4px;border-radius:2px;background:var(--color-border-tertiary);margin-top:4px}
+.prog-fill{height:100%;border-radius:2px;background:var(--color-text-success)}
+</style>
+
+<div class="board">
+<h2 class="sr-only">Amazon-style AI e-commerce feature board — modules as cards; click a card for a dev prompt.</h2>
+
+<div class="stats" id="stats"></div>
+
+<div class="filters" id="filters"></div>
+
+<div id="board-content"></div>
+</div>
+
+<script>
+function fireFeaturePrompt(featureName, sectionLabel) {
+  const message =
+    'ออกแบบงานพัฒนาสำหรับฟีเจอร์ "' +
+    featureName +
+    '" (หมวด: ' +
+    sectionLabel +
+    ") ให้ระบบ e-commerce แนว Amazon ที่ยังยึดคอนเซ็ปต์ AI: (1) user stories / acceptance criteria (2) API endpoints + auth (3) โมเดลข้อมูลหลัก & indexes (4) จุดที่ใช้ ML/LLM และข้อมูลเทรน (5) ลำดับส่ง MVP";
+  if (typeof window !== "undefined" && typeof window.sendPrompt === "function") {
+    window.sendPrompt(message);
+    return;
+  }
+  if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+    void navigator.clipboard.writeText(message).catch(function () {});
+  }
+  console.log("[Feature board prompt]", message);
+}
+const sections=[
+{id:"auth",label:"Auth & User",color:"#7F77DD",cards:[
+{name:"Register / Login",desc:"JWT auth, bcrypt password, refresh token",icon:"ti-user",diff:"easy",ai:false,done:true},
+{name:"User profile",desc:"แก้ชื่อ, avatar, email, เปลี่ยน password",icon:"ti-id",diff:"easy",ai:false},
+{name:"Address book",desc:"เก็บหลาย address, ตั้ง default",icon:"ti-map-pin",diff:"easy",ai:false},
+{name:"Saved payment methods",desc:"บันทึก card ไว้ใช้ซ้ำ (tokenized)",icon:"ti-credit-card",diff:"medium",ai:false},
+{name:"Two-factor auth",desc:"OTP ผ่าน email / TOTP authenticator",icon:"ti-shield-lock",diff:"medium",ai:false},
+{name:"Notification preferences",desc:"เลือก email / push ที่อยากรับ",icon:"ti-bell",diff:"easy",ai:false},
+{name:"OAuth / Social login",desc:"Google, Apple, LINE — เชื่อมบัญชีเดิม",icon:"ti-brand-google",diff:"medium",ai:false,tag:"Amazon-like"},
+{name:"Device & session management",desc:"ดูอุปกรณ์ที่ล็อกอิน, revoke รายตัวหรือทั้งหมด",icon:"ti-devices",diff:"medium",ai:false},
+{name:"Login & security activity",desc:"ประวัติล็อกอิน, เปลี่ยนรหัส, แจ้งเตือนการเข้าถึงผิดปกติ",icon:"ti-history",diff:"easy",ai:false},
+{name:"Data export & account closure",desc:"ขอสำเนาข้อมูล, ลบบัญชีถาวร (ลักษณะ GDPR)",icon:"ti-file-export",diff:"medium",ai:false},
+{name:"CAPTCHA / bot protection",desc:"Turnstile หรือ reCAPTCHA — ก่อน login & checkout",icon:"ti-shield-check",diff:"easy",ai:false},
+{name:"B2B / org account",desc:"บริษัท, หลาย user, PO number, tax ID",icon:"ti-building",diff:"hard",ai:false,tag:"Amazon Business"},
+]},
+{id:"product",label:"Product System",color:"#1D9E75",cards:[
+{name:"Product catalog",desc:"CRUD สินค้า, category, tags, variants",icon:"ti-box",diff:"easy",ai:false,done:true},
+{name:"Product variants",desc:"ขนาด, สี, วัสดุ แต่ละ variant มี stock/ราคาของตัวเอง",icon:"ti-palette",diff:"medium",ai:false},
+{name:"Image gallery",desc:"อัปหลายรูปต่อสินค้า, reorder, zoom",icon:"ti-photo",diff:"easy",ai:false},
+{name:"Product reviews & ratings",desc:"ให้ดาวและเขียน review, รูปภาพได้",icon:"ti-star",diff:"medium",ai:false},
+{name:"Q&A section",desc:"ถามคำถามบนหน้าสินค้า, seller ตอบได้",icon:"ti-message-question",diff:"medium",ai:false},
+{name:"Price history",desc:"กราฟราคาย้อนหลัง บอก high/low",icon:"ti-chart-line",diff:"medium",ai:false},
+{name:"Stock alert",desc:"แจ้งเตือนเมื่อสินค้ากลับมามีใหม่",icon:"ti-bell-ringing",diff:"easy",ai:false},
+{name:"Product bundles",desc:"จัดชุดสินค้า ซื้อพร้อมกันลดราคา",icon:"ti-package",diff:"medium",ai:false},
+{name:"Product comparison",desc:"เปรียบเทียบสินค้า 2-4 ชิ้นแบบตาราง",icon:"ti-columns",diff:"medium",ai:false},
+{name:"Flash deals",desc:"ลดราคาแบบมี countdown timer",icon:"ti-bolt",diff:"medium",ai:false},
+{name:"Browse tree & breadcrumbs",desc:"หมวดซ้อนลึก, เดิน breadcrumbs แบบ marketplace",icon:"ti-hierarchy",diff:"medium",ai:false,tag:"Amazon-like"},
+{name:"Buy Box (multi-seller)",desc:"หลาย seller เสนอราคา — เลือก default + ดูของอื่น",icon:"ti-shopping-bag",diff:"hard",ai:false,tag:"Marketplace"},
+{name:"Stable product ID (ASIN-style)",desc:"รหัส canonical สำหรับ SEO, merge listing",icon:"ti-hash",diff:"easy",ai:false},
+{name:"Supplier feed import",desc:"CSV/XML feed แมปฟิลด์, schedule sync",icon:"ti-table-import",diff:"hard",ai:false},
+{name:"Hazmat & compliance flags",desc:"สินค้าอันตราย, อายุ, ข้อจำกัดโซน/ช่องทาง",icon:"ti-alert-triangle",diff:"medium",ai:false},
+{name:"Sponsored placements",desc:"ช่องโฆษณาในค้นหา & หน้าสินค้า billing ตามคลิก",icon:"ti-ad",diff:"hard",ai:false},
+{name:"Rich / A+ content modules",desc:"โมดูลรูป+ข้อความแบรนด์บน PDP",icon:"ti-layout-list",diff:"medium",ai:false,tag:"Amazon-like"},
+{name:"Subscribe & Save (repeat delivery)",desc:"สมัครจัดส่งซ้ำอัตโนมัติ, ส่วนลดรอบ",icon:"ti-refresh-dot",diff:"hard",ai:false,tag:"Amazon-like"},
+{name:"Brand storefront page",desc:"แบรนด์มีหน้ารวมสินค้า แบนเนอร์, story",icon:"ti-flag",diff:"medium",ai:false},
+{name:"Sustainability badges",desc:"Climate friendly, refill — tag บนสินค้า",icon:"ti-leaf",diff:"easy",ai:false},
+]},
+{id:"ai",label:"AI Features",color:"#378ADD",cards:[
+{name:"Personalized homepage",desc:"แสดงสินค้าตาม user behavior แต่ละคน",icon:"ti-sparkles",diff:"hard",ai:true,done:true},
+{name:"Similar products",desc:"Content-based filtering บน product page",icon:"ti-stack-2",diff:"hard",ai:true,done:true},
+{name:"Collaborative filtering",desc:"ALS matrix factorization, train ทุกคืน",icon:"ti-users-group",diff:"hard",ai:true,done:true},
+{name:"LLM smart search",desc:"ค้นหาด้วยภาษาธรรมชาติ เช่น 'ของขวัญผู้หญิงงบ 500'",icon:"ti-search",diff:"hard",ai:true},
+{name:"Visual search",desc:"อัปรูปสินค้าที่อยากได้ → ระบบหาให้",icon:"ti-camera",diff:"hard",ai:true},
+{name:"AI review summarizer",desc:"สรุป review ทั้งหมดเป็น pros/cons ด้วย LLM",icon:"ti-file-text",diff:"medium",ai:true},
+{name:"AI size recommender",desc:"แนะนำไซส์โดยถามข้อมูลร่างกาย",icon:"ti-ruler",diff:"medium",ai:true},
+{name:"Sentiment analysis",desc:"วิเคราะห์ความรู้สึก review อัตโนมัติ",icon:"ti-mood-happy",diff:"medium",ai:true},
+{name:"Dynamic pricing AI",desc:"ปรับราคาตาม demand, คู่แข่ง, ช่วงเวลา",icon:"ti-currency-dollar",diff:"hard",ai:true},
+{name:"Fraud detection",desc:"ตรวจจับ order ผิดปกติด้วย ML",icon:"ti-shield",diff:"hard",ai:true},
+{name:"Demand forecasting",desc:"พยากรณ์ยอดขายล่วงหน้าสำหรับ stock management",icon:"ti-chart-dots",diff:"hard",ai:true},
+{name:"AI chatbot assistant",desc:"ตอบคำถาม, ช่วยหาสินค้า, track order",icon:"ti-robot",diff:"hard",ai:true},
+{name:"Learning-to-rank (LTR)",desc:"จัดอันดับผลค้นหาจากคลิกและการซื้อ",icon:"ti-sort-descending",diff:"hard",ai:true},
+{name:"Query understanding & slot filling",desc:"แยก intent, brand, ราคา, attribute จาก query",icon:"ti-brain",diff:"hard",ai:true},
+{name:"Auto tagging & categorization",desc:"จำแนกหมวด/คีย์เวิร์ดจากชื่อ+คำอธิบาย+รูป",icon:"ti-tags",diff:"medium",ai:true},
+{name:"Duplicate / near-duplicate merge",desc:"หา listing ซ้ำด้วย embedding + human review",icon:"ti-copy",diff:"hard",ai:true},
+{name:"Fake review & incentive detection",desc:"ลด spam review ด้วย ML + policy",icon:"ti-thumb-down",diff:"hard",ai:true},
+{name:"Semantic / hybrid search",desc:"vector + keyword — OpenSearch / pgvector",icon:"ti-list-search",diff:"hard",ai:true},
+{name:"RAG policy assistant",desc:"LLM ตอบคืนสินค้า/ค่าส่งอิงเอกสาร policy",icon:"ti-book",diff:"medium",ai:true},
+{name:"Churn & win-back scoring",desc:"คาดผู้ใช้หาย + แนะนำแคมเปญ",icon:"ti-user-minus",diff:"hard",ai:true},
+{name:"Bandit for carousel slots",desc:"ทดสอบแถวสินค้าด้วย multi-armed bandit",icon:"ti-flask",diff:"hard",ai:true},
+]},
+{id:"shopping",label:"Shopping & Cart",color:"#BA7517",cards:[
+{name:"Persistent cart",desc:"ตะกร้าบันทึกอยู่แม้ logout แล้ว login ใหม่",icon:"ti-shopping-cart",diff:"easy",ai:false},
+{name:"Save for later",desc:"ย้ายสินค้าจาก cart ไป wishlist ชั่วคราว",icon:"ti-bookmark",diff:"easy",ai:false},
+{name:"Wishlist",desc:"บันทึกสินค้าที่อยากได้, แชร์ได้",icon:"ti-heart",diff:"easy",ai:false},
+{name:"Coupon & promo codes",desc:"ใช้โค้ดลดราคา, ตรวจ validity",icon:"ti-discount",diff:"medium",ai:false},
+{name:"Loyalty points",desc:"ซื้อได้แต้ม, แลกส่วนลด",icon:"ti-coin",diff:"medium",ai:false},
+{name:"Recently viewed",desc:"แสดง 10 สินค้าล่าสุดที่ดู",icon:"ti-history",diff:"easy",ai:false},
+{name:"Gift wrapping",desc:"เพิ่ม option ห่อของขวัญ + ข้อความ",icon:"ti-gift",diff:"easy",ai:false},
+{name:"Gift cards",desc:"ซื้อ gift card ส่งให้คนอื่นได้",icon:"ti-credit-card",diff:"medium",ai:false},
+{name:"1-Click / express checkout",desc:"ใช้ default ที่อยู่+การชำระหนึ่งคลิก (ออกแบบ PCI ให้ปลอดภัย)",icon:"ti-bolt",diff:"hard",ai:false,tag:"Amazon-like"},
+{name:"Guest cart merge on login",desc:"รวมตะกร้า guest กับ user หลังล็อกอิน",icon:"ti-git-merge",diff:"medium",ai:false},
+{name:"Free shipping progress bar",desc:"บอกว่าขาดอีกเท่าไหร่ถึงฟรีค่าส่ง",icon:"ti-truck-delivery",diff:"easy",ai:false,done:true},
+{name:"Gift registry",desc:"รายการของขวัญงานแต่ง/เด็ก แชร์ลิงก์ให้เพื่อน",icon:"ti-list-check",diff:"medium",ai:false},
+{name:"Quantity / tier pricing",desc:"ซื้อเยอะลดเพิ่มตามระดับ",icon:"ti-stairs",diff:"medium",ai:false},
+{name:"Price match / low price report",desc:"รับรายงานราคาถูกกว่าหรือโปร price match",icon:"ti-report-money",diff:"hard",ai:false},
+{name:"Installation / add-on services",desc:"ซื้อสินค้าพร้อมบริการติดตั้ง (slot booking)",icon:"ti-tool",diff:"hard",ai:false,tag:"Amazon-like"},
+]},
+{id:"checkout",label:"Checkout & Payment",color:"#D85A30",cards:[
+{name:"Multi-step checkout",desc:"Address → Shipping → Payment → Review",icon:"ti-circle-check",diff:"medium",ai:false},
+{name:"Multiple payment methods",desc:"บัตร, โอนธนาคาร, QR, crypto",icon:"ti-wallet",diff:"hard",ai:false},
+{name:"Address validation",desc:"ตรวจ address ถูกต้องก่อน submit",icon:"ti-map-check",diff:"medium",ai:false},
+{name:"Order confirmation email",desc:"ส่ง email สวยๆ หลัง checkout สำเร็จ",icon:"ti-mail-check",diff:"easy",ai:false},
+{name:"Invoice PDF",desc:"สร้าง PDF invoice ดาวน์โหลดได้",icon:"ti-file-invoice",diff:"easy",ai:false},
+{name:"Instalment / BNPL",desc:"แบ่งจ่ายผ่อน 0% หรือ Buy Now Pay Later",icon:"ti-calendar-dollar",diff:"hard",ai:false},
+{name:"Guest checkout",desc:"สั่งโดยไม่สร้างบัญชี — ติดตามด้วยอีเมล/ลิงก์",icon:"ti-user-off",diff:"medium",ai:false},
+{name:"Tax & VAT engine",desc:"คำนวณภาษีจากที่อยู่, ประเภทสินค้า, ยกเว้น",icon:"ti-receipt-tax",diff:"hard",ai:false},
+{name:"Live shipping rate shop",desc:"ดึงค่าส่งหลาย carrier + ระดับบริการ",icon:"ti-package",diff:"medium",ai:false},
+{name:"Split tender payment",desc:"หลายช่องทาง/หลายบัตรในออเดอร์เดียว",icon:"ti-credit-card",diff:"hard",ai:false},
+{name:"Auth + capture / partial capture",desc:"hold ยอดก่อน, capture ตอน ship หรือแยกพัสดุ",icon:"ti-hourglass",diff:"hard",ai:false},
+{name:"Risk & velocity rules",desc:"AVS, CVV, device fingerprint, จำกัดความถี่",icon:"ti-shield-exclamation",diff:"hard",ai:false},
+]},
+{id:"order",label:"Order Management",color:"#639922",cards:[
+{name:"Order tracking",desc:"ติดตามสถานะ order แบบ step-by-step",icon:"ti-truck",diff:"medium",ai:false},
+{name:"Returns & refunds",desc:"ยื่น return request, upload รูปสินค้า",icon:"ti-arrow-back-up",diff:"medium",ai:false},
+{name:"Cancellation",desc:"ยกเลิก order ก่อน ship",icon:"ti-x",diff:"easy",ai:false},
+{name:"Reorder",desc:"ซื้อซ้ำ order เดิมได้ใน 1 click",icon:"ti-refresh",diff:"easy",ai:false},
+{name:"Order history",desc:"ดู order ทั้งหมดย้อนหลัง filter ได้",icon:"ti-list-details",diff:"easy",ai:false},
+{name:"Delivery scheduling",desc:"เลือกวันและเวลาจัดส่งล่วงหน้า",icon:"ti-calendar-event",diff:"medium",ai:false},
+{name:"Carrier map tracking",desc:"webhook carrier → แสดงจุด/สถานะบนแผนที่",icon:"ti-map",diff:"medium",ai:false},
+{name:"Split shipment / partial ship",desc:"ออเดอร์เดียวหลายพัสดุ สถานะแยกรายกล่อง",icon:"ti-packages",diff:"hard",ai:false},
+{name:"Tax invoice flow",desc:"ใบกำกับภาษี, e-tax (ไทย) ส่งอีเมล/ดาวน์โหลด",icon:"ti-file-certificate",diff:"medium",ai:false},
+{name:"Digital goods & license keys",desc:"ส่ง key, download link, revoke ป้องกันแชร์",icon:"ti-key",diff:"medium",ai:false},
+{name:"Subscription order portal",desc:"ผู้ใช้ดู/แก้รอบชำระของ subscribe & save",icon:"ti-repeat",diff:"medium",ai:false},
+{name:"Buyer guarantee / claims",desc:"เคลมปกป้องผู้ซื้อ ระดับ marketplace (A-to-z style)",icon:"ti-shield-lock",diff:"hard",ai:false,tag:"Trust"},
+]},
+{id:"admin",label:"Admin & Seller",color:"#533CAB",cards:[
+{name:"Analytics dashboard",desc:"Revenue, orders, conversion rate, charts",icon:"ti-chart-bar",diff:"medium",ai:false,done:true},
+{name:"Inventory management",desc:"stock, low stock alert, import CSV",icon:"ti-building-warehouse",diff:"medium",ai:false},
+{name:"Order fulfillment",desc:"process order, print label, mark shipped",icon:"ti-package-export",diff:"medium",ai:false},
+{name:"Promotion management",desc:"สร้าง/จัดการ coupon, flash deals",icon:"ti-speakerphone",diff:"medium",ai:false},
+{name:"A/B testing",desc:"ทดสอบ algorithm recommendation หรือ UI",icon:"ti-test-pipe",diff:"hard",ai:true,done:true},
+{name:"SEO management",desc:"แก้ meta title/description ต่อ product",icon:"ti-search",diff:"easy",ai:false},
+{name:"Email campaigns",desc:"ส่ง email หา customer segment",icon:"ti-mail",diff:"medium",ai:false},
+{name:"MLflow model tracking",desc:"ติดตาม model version, metrics, artifacts",icon:"ti-git-branch",diff:"hard",ai:true,done:true},
+{name:"Seller portal",desc:"Multi-vendor: seller จัดการสินค้าตัวเอง",icon:"ti-building-store",diff:"hard",ai:false},
+{name:"RBAC & admin roles",desc:"สิทธิ์แยก superadmin, seller, support, finance",icon:"ti-lock-access",diff:"medium",ai:false},
+{name:"Immutable audit trail",desc:"ใครแก้ราคา/stock/promo เมื่อไหร่ — สืบค้นได้",icon:"ti-notes",diff:"medium",ai:false},
+{name:"Bulk edit grid",desc:"แก้ราคา/stock เป็นชุด + undo",icon:"ti-table-import",diff:"medium",ai:false},
+{name:"Moderation queue (UGC)",desc:"คิวอนุมัติรีวิว/รูปก่อนโชว์",icon:"ti-eye-check",diff:"medium",ai:false},
+{name:"Public API & webhooks",desc:"partner รับ event order/stock — API key + signing",icon:"ti-webhook",diff:"hard",ai:false},
+{name:"Seller performance & ODR",desc:"late ship, defect rate, penalty — dashboard",icon:"ti-clock-exclamation",diff:"hard",ai:false,tag:"Marketplace"},
+{name:"Payout & settlement",desc:"หัก fee, โอนเงิน seller รอบๆ",icon:"ti-cash-banknote",diff:"hard",ai:false,tag:"Marketplace"},
+]},
+{id:"social",label:"Social & Community",color:"#D4537E",cards:[
+{name:"Review with photos",desc:"อัปรูปพร้อม review, vote helpful",icon:"ti-camera-plus",diff:"medium",ai:false},
+{name:"Follow sellers/brands",desc:"ติดตามร้านค้าและรับ feed updates",icon:"ti-rss",diff:"medium",ai:false},
+{name:"Share products",desc:"แชร์ product link พร้อม OG image",icon:"ti-share",diff:"easy",ai:false},
+{name:"Social proof widget",desc:"'23 คนกำลังดูสินค้านี้อยู่'",icon:"ti-users",diff:"easy",ai:false},
+{name:"Referral program",desc:"แชร์ลิงก์ได้ commission ต่อการซื้อ",icon:"ti-link",diff:"medium",ai:false},
+{name:"Verified purchase badge",desc:"รีวิวเฉพาะผู้ซื้อออเดอร์จริง",icon:"ti-badge",diff:"easy",ai:false},
+{name:"Official brand answer",desc:"คำตอบจากแบรนด์บน Q&A มีป้ายยืนยัน",icon:"ti-message-circle-check",diff:"easy",ai:false},
+{name:"Live shopping / stream",desc:"ไลฟ์ขายของ โยงสินค้าและโปร",icon:"ti-video",diff:"hard",ai:false},
+{name:"Community guidelines & report",desc:"แจ้งเนื้อหา — คิว moderator",icon:"ti-flag",diff:"medium",ai:false},
+]},
+{id:"search",label:"Search & Discovery",color:"#C2410C",cards:[
+{name:"Search autocomplete",desc:"คำแนะนำ prefix + popular + ส่วนบุคคล",icon:"ti-text-spellcheck",diff:"medium",ai:true,tag:"Amazon-like",done:true},
+{name:"Faceted filters (refinements)",desc:"แบรนด์, ราคา, เรตติ้ง, แท็กจัดส่งเร็ว",icon:"ti-filter",diff:"medium",ai:false},
+{name:"Sort & relevance",desc:"โผล่แนะนำ, ราคา, คะแนน, ใหม่ล่าสุด",icon:"ti-arrows-sort",diff:"easy",ai:false,done:true},
+{name:"Spell check & synonyms",desc:"did you mean + คลังคำพ้องความหมาย",icon:"ti-typography",diff:"medium",ai:true},
+{name:"Programmatic SEO landings",desc:"หน้า collection ยาวๆ สำหรับ SEO",icon:"ti-world",diff:"medium",ai:false},
+{name:"Personalized promo rows",desc:"carousel จากพฤติกรรม + segment",icon:"ti-layout-grid",diff:"hard",ai:true},
+]},
+{id:"shipping",label:"Shipping & Logistics",color:"#0E7490",cards:[
+{name:"Multi-warehouse allocation",desc:"ตัด stock จาก DC ใกล้ที่สุด",icon:"ti-building-warehouse",diff:"hard",ai:false},
+{name:"Delivery promise date",desc:"แสดง 'ควรถึงวันที่' จาก stock + carrier SLA",icon:"ti-calendar",diff:"medium",ai:false,tag:"Amazon-like"},
+{name:"Carrier label & webhook",desc:"เชื่อมพัสดุ — พิมพ์ใบปะ + track",icon:"ti-truck",diff:"hard",ai:false},
+{name:"Pickup point / locker",desc:"เลือกรับที่จุดบริการแทนที่อยู่",icon:"ti-map-2",diff:"medium",ai:false},
+{name:"SLO for delivery accuracy",desc:"วัด OTIF, late delivery — รายงาน",icon:"ti-report-analytics",diff:"medium",ai:false},
+]},
+{id:"membership",label:"Membership & Programs",color:"#B45309",cards:[
+{name:"Paid membership (Prime-like)",desc:"สมาชิกรายปี — ส่งฟรีเร็ว + สิทธิพิเศษ",icon:"ti-crown",diff:"hard",ai:false,tag:"Amazon-like"},
+{name:"Dynamic free-ship threshold",desc:"เกณฑ์ฟรีค่าส่งตามโซน/แคมเปญ",icon:"ti-truck-loading",diff:"medium",ai:true},
+{name:"Try before you buy",desc:"ทดลองของแล้วเก็บเงินทีหลัง",icon:"ti-eye-check",diff:"hard",ai:false},
+{name:"Round-up donation check-out",desc:"บริจาทส่วนต่างหรือ % ให้มูลนิธิที่เลือก",icon:"ti-heart-handshake",diff:"easy",ai:false,tag:"Smile-style"},
+{name:"Membership tier & perks",desc:"Silver/Gold — แต้ม + สิทธิ์ส่งฟรี",icon:"ti-medal",diff:"medium",ai:false},
+]},
+{id:"trust",label:"Trust, Policy & Safety",color:"#475569",cards:[
+{name:"Return window engine",desc:"กำหนดวันคืน ตามหมวดและสาเหตุ",icon:"ti-receipt-refund",diff:"medium",ai:false},
+{name:"Product recall broadcast",desc:"ดึง serial/batch แจ้งผู้ซื้อเมื่อ recall",icon:"ti-alert-octagon",diff:"medium",ai:false},
+{name:"IP / counterfeit workflow",desc:"รับเรื่องละเมิดลิขสิทธิ์ — ถอด listing",icon:"ti-gavel",diff:"hard",ai:false},
+{name:"Cookie CMP & consent log",desc:"จัดการคุกกี้ เก็บ consent ย้อนหลัง",icon:"ti-cookie",diff:"medium",ai:false},
+{name:"Age-gated checkout",desc:"ยืนยันอายุสำหรับสินค้าจำกัดอายุ",icon:"ti-id-badge",diff:"medium",ai:false},
+{name:"PCI token-only cards",desc:"ไม่เก็บ PAN ดิบ — vault ของ PSP",icon:"ti-lock",diff:"hard",ai:false},
+]},
+{id:"support",label:"Customer Support",color:"#0D9488",cards:[
+{name:"Help center / KB",desc:"ค้นหาบทความ + tree หมวด",icon:"ti-help",diff:"medium",ai:false},
+{name:"Ticketing / case management",desc:"เปิดเคส, สถานะ, email thread",icon:"ti-mail-forward",diff:"medium",ai:false},
+{name:"Live chat queue",desc:"คิวแชท + handoff human",icon:"ti-message-dots",diff:"hard",ai:false},
+{name:"AI summarize ticket",desc:"สรุปเคส + draft คำตอบ (human ยืนยัน)",icon:"ti-message-chatbot",diff:"hard",ai:true},
+{name:"Post-order amend workflow",desc:"ขอเปลี่ยนที่อยู่/ตัวเลือกก่อน ship",icon:"ti-edit",diff:"medium",ai:false},
+{name:"Callback / voice request",desc:"นัดให้โทรกลับจาก support",icon:"ti-phone",diff:"medium",ai:false},
+]},
+{id:"content",label:"Content & Merchandising",color:"#A21CAF",cards:[
+{name:"Modular homepage",desc:"hero, carousels, editorial rows ปรับได้",icon:"ti-layout-dashboard",diff:"medium",ai:false},
+{name:"Deals hub (Gold Box)",desc:"หน้ารวมดีลประจำวัน + countdown",icon:"ti-flame",diff:"easy",ai:false,tag:"Amazon-like"},
+{name:"Seasonal event builder",desc:"Black Friday, 11.11 — schedule ราคา",icon:"ti-calendar-event",diff:"medium",ai:false},
+{name:"Static CMS pages",desc:"Policy, blog, press — Markdown/HTML",icon:"ti-article",diff:"easy",ai:false},
+{name:"In-app notification center",desc:"inbox แจ้งเตือนโปรและสถานะออเดอร์",icon:"ti-bell",diff:"medium",ai:false},
+]},
+{id:"intl",label:"International & Localization",color:"#1E40AF",cards:[
+{name:"i18n & locale routing",desc:"หลายภาษา, รูปแบบวันที่/เงิน",icon:"ti-language",diff:"medium",ai:false},
+{name:"Multi-currency FX display",desc:"แสดงสกุลเทียบ, snapshot อัตรา",icon:"ti-currency-bitcoin",diff:"medium",ai:false},
+{name:"DDP / duties estimate",desc:"ประมาณภาษีนำเข้ารายตะกร้า",icon:"ti-globe",diff:"hard",ai:false},
+{name:"Regional catalog rules",desc:"สินค้า/ราคาแตกต่างตามประเทศ",icon:"ti-world",diff:"hard",ai:false},
+]},
+{id:"growth",label:"Growth, Ads & CRM",color:"#EA580C",cards:[
+{name:"Abandoned cart journeys",desc:"email/SMS/LINE flow ตามเหตุการณ์",icon:"ti-mail-forward",diff:"medium",ai:true},
+{name:"Push & SMS opt-in",desc:"คำขอสิทธิ์, ปิดรับ, log consent",icon:"ti-device-mobile",diff:"medium",ai:false},
+{name:"Attribution dashboard",desc:"UTM, first-touch, assisted conversion",icon:"ti-chart-line",diff:"medium",ai:false},
+{name:"Affiliate dashboard",desc:"ลิงก์ partner, คอมมิชชั่น, payout",icon:"ti-link",diff:"hard",ai:false},
+{name:"Ads pixel integration",desc:"Meta/Google events — สำหรับ retargeting",icon:"ti-brand-facebook",diff:"easy",ai:false},
+{name:"Lookalike / segment export",desc:"ส่ง audience ไป ads (hashed email)",icon:"ti-users-group",diff:"hard",ai:true},
+]},
+{id:"platform",label:"Platform & SRE",color:"#365314",cards:[
+{name:"Image CDN pipeline",desc:"WebP/AVIF, resize on the fly, cache-control",icon:"ti-photo",diff:"medium",ai:false},
+{name:"Search service (ES/OS)",desc:"index catalog, synonyms, facets",icon:"ti-list-search",diff:"hard",ai:false},
+{name:"Redis cache layers",desc:"ราคา, stock hotkey, rate limit",icon:"ti-bolt",diff:"medium",ai:false},
+{name:"Tracing & error budgets",desc:"OTel, SLO dashboards, burn alerts",icon:"ti-heartbeat",diff:"medium",ai:false},
+{name:"Feature flags",desc:"เปิดแถว recommendation ใหม่โดยไม่ deploy",icon:"ti-toggle-right",diff:"easy",ai:false},
+{name:"DR & backup playbooks",desc:"RPO/RTO, restore drill",icon:"ti-cloud",diff:"hard",ai:false},
+]},
+{id:"voice_ux",label:"Voice, AR & Scan",color:"#6B21A8",cards:[
+{name:"Voice reorder assistant",desc:"สั่งซ้ำรายการด้วย intent เสียง",icon:"ti-microphone",diff:"hard",ai:true},
+{name:"AR view / try-on hooks",desc:"ฝัง AR viewer บน PDP",icon:"ti-cube",diff:"hard",ai:true},
+{name:"Barcode / SKU scan",desc:"สแกนหา SKU ในแคตตาล็อก",icon:"ti-barcode",diff:"medium",ai:false},
+{name:"Lens-style image search shortcut",desc:"ปุ่มกล้องจากแถบค้นหา",icon:"ti-camera",diff:"medium",ai:true},
+]},
+];
+
+const diffCount={easy:0,medium:0,hard:0,ai:0,total:0,done:0};
+sections.forEach(s=>s.cards.forEach(c=>{
+  diffCount.total++;
+  if(c.done)diffCount.done++;
+  if(c.ai)diffCount.ai++;
+  diffCount[c.diff]++;
+}));
+
+const statsEl=document.getElementById('stats');
+const statsData=[
+  {num:sections.length,label:"หมวด / โมดูล",color:"var(--color-text-secondary)"},
+  {num:diffCount.total,label:"การ์ดฟีเจอร์",color:"var(--color-text-primary)"},
+  {num:diffCount.ai,label:"AI features",color:"var(--color-text-info)"},
+  {num:diffCount.hard,label:"ความยาก hard",color:"var(--color-text-danger)"},
+  {num:diffCount.done,label:"ทำแล้ว (done)",color:"var(--color-text-success)"},
+];
+statsData.forEach(s=>{
+  const d=document.createElement('div');
+  d.className='stat';
+  d.innerHTML=`<div class="stat-num" style="color:${s.color}">${s.num}</div><div class="stat-label">${s.label}</div>`;
+  statsEl.appendChild(d);
+});
+
+let activeFilter='all';
+const filterDefs=[
+  {id:'all',label:'ทั้งหมด'},
+  {id:'ai',label:'AI features'},
+  {id:'easy',label:'Easy'},
+  {id:'medium',label:'Medium'},
+  {id:'hard',label:'Hard'},
+];
+
+const filtersEl=document.getElementById('filters');
+filterDefs.forEach(f=>{
+  const b=document.createElement('button');
+  b.className='fbtn'+(f.id==='all'?' active':'');
+  b.textContent=f.label;
+  b.onclick=()=>{
+    activeFilter=f.id;
+    document.querySelectorAll('.fbtn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    render();
+  };
+  filtersEl.appendChild(b);
+});
+
+function render(){
+  const cont=document.getElementById('board-content');
+  cont.innerHTML='';
+  sections.forEach(sec=>{
+    const filtered=sec.cards.filter(c=>{
+      if(activeFilter==='all')return true;
+      if(activeFilter==='ai')return c.ai;
+      return c.diff===activeFilter;
+    });
+    if(!filtered.length)return;
+    const wrap=document.createElement('div');
+    wrap.className='section';
+    const title=document.createElement('div');
+    title.className='section-title';
+    title.innerHTML=`<span style="background:${sec.color}"></span>${sec.label} <span style="font-weight:400;color:var(--color-text-secondary)">${filtered.length}</span>`;
+    wrap.appendChild(title);
+    const grid=document.createElement('div');
+    grid.className='grid';
+    filtered.forEach(c=>{
+      const card=document.createElement('div');
+      card.className='card'+(c.done?' done':'');
+      const diffLabel={easy:'Easy',medium:'Medium',hard:'Hard'}[c.diff];
+      const aiBadge=c.ai?`<span class="badge ai">AI</span>`:'';
+      const diffBadge=`<span class="badge ${c.diff}">${diffLabel}</span>`;
+      card.innerHTML=`
+        <div class="card-top">
+          <i class="ti ${c.icon} card-icon" aria-hidden="true" style="font-size:20px"></i>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">${aiBadge}${diffBadge}</div>
+        </div>
+        <div class="card-name">${c.name}${c.done?' <span style="font-size:11px;color:var(--color-text-success)">✓</span>':''}</div>
+        <div class="card-desc">${c.desc}</div>${c.tag ? `<span class="card-tag">${c.tag}</span>` : ""}
+      `;
+      card.onclick = function () {
+        fireFeaturePrompt(c.name, sec.label);
+      };
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+    cont.appendChild(wrap);
+  });
+}
+render();
+</script>

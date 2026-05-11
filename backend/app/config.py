@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     bootstrap_admin_name: str | None = None
     # Optional: redis://localhost:6379/0 — enables short TTL cache for /recommendations/popular and /me
     redis_url: str | None = None
+    # Optional: Stripe Checkout (test keys ok for dev). Webhook optional if you use POST /payments/sync-session after redirect.
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    # Storefront origin for Stripe success/cancel URLs (must match where users open the Next.js app).
+    public_app_url: str = "http://localhost:3000"
 
 
 settings = Settings()

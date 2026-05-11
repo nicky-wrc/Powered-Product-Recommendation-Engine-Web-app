@@ -1,18 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, hash_password, verify_password
 from app.database import get_db
 from app.deps import get_current_user
+from app.image_upload import read_image_upload
 from app.models.user import User
-from app.schemas.auth import TokenResponse, UserCreate, UserLogin, UserPublic
+from app.schemas.auth import ProfileUpdate, TokenResponse, UserCreate, UserLogin, UserPublic
+from app.upload_paths import PROFILE_IMAGES_DIR
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _public(u: User) -> UserPublic:
-    return UserPublic(id=u.id, email=u.email, name=u.name, is_admin=u.is_admin)
+    return UserPublic(
+        id=u.id,
+        email=u.email,
+        name=u.name,
+        is_admin=u.is_admin,
+        avatar_url=u.avatar_url,
+        phone=u.phone,
+        address_line1=u.address_line1,
+        address_line2=u.address_line2,
+        city=u.city,
+        province=u.province,
+        postal_code=u.postal_code,
+        country=u.country,
+    )
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -44,4 +59,61 @@ def login(body: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
 
 @router.get("/me", response_model=UserPublic)
 def me(user: User = Depends(get_current_user)) -> UserPublic:
+    return _public(user)
+
+
+@router.patch("/me", response_model=UserPublic)
+@router.put("/me", response_model=UserPublic)
+def update_profile(
+    body: ProfileUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPublic:
+    data = body.model_dump(exclude_unset=True)
+    if data.get("name") is None:
+        data.pop("name", None)
+    for key, value in data.items():
+        setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    return _public(user)
+
+
+def _remove_profile_files(user_id) -> None:
+    PROFILE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    uid_hex = str(user_id).replace("-", "")
+    for p in PROFILE_IMAGES_DIR.glob(f"{uid_hex}.*"):
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+@router.post("/me/avatar", response_model=UserPublic)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPublic:
+    data, ext = await read_image_upload(file)
+    PROFILE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    _remove_profile_files(user.id)
+    name = f"{str(user.id).replace('-', '')}{ext}"
+    dest = PROFILE_IMAGES_DIR / name
+    dest.write_bytes(data)
+    user.avatar_url = f"/uploads/profiles/{name}"
+    db.commit()
+    db.refresh(user)
+    return _public(user)
+
+
+@router.delete("/me/avatar", response_model=UserPublic)
+def remove_avatar(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserPublic:
+    _remove_profile_files(user.id)
+    user.avatar_url = None
+    db.commit()
+    db.refresh(user)
     return _public(user)

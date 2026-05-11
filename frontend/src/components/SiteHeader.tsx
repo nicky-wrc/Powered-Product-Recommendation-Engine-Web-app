@@ -1,11 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { User } from "@/lib/api";
-import { API_BASE, fetchCart, getToken, setToken } from "@/lib/api";
+import { API_BASE, fetchCart, getToken, isLocalUploadImageUrl, PROFILE_UPDATED_EVENT, setToken } from "@/lib/api";
 import { CART_CHANGED_EVENT, cartItemCount } from "@/lib/cart";
 
 const navClass =
@@ -41,17 +42,28 @@ export function SiteHeader() {
   const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      queueMicrotask(() => {
+    let cancelled = false;
+    const loadUser = () => {
+      const token = getToken();
+      if (!token) {
         setUser(null);
-      });
-      return;
-    }
-    fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((u: User | null) => setUser(u))
-      .catch(() => setUser(null));
+        return;
+      }
+      fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((u: User | null) => {
+          if (!cancelled) setUser(u);
+        })
+        .catch(() => {
+          if (!cancelled) setUser(null);
+        });
+    };
+    loadUser();
+    window.addEventListener(PROFILE_UPDATED_EVENT, loadUser);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(PROFILE_UPDATED_EVENT, loadUser);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,6 +115,11 @@ export function SiteHeader() {
             ) : null}
           </Link>
           {user ? (
+            <Link href="/profile" className={navClass}>
+              Profile
+            </Link>
+          ) : null}
+          {user ? (
             <Link href="/orders" className={navClass}>
               Orders
             </Link>
@@ -114,6 +131,18 @@ export function SiteHeader() {
           ) : null}
           {user ? (
             <>
+              {user.avatar_url ? (
+                <span className="relative hidden h-8 w-8 shrink-0 overflow-hidden rounded-full border border-stone-200 dark:border-zinc-600 sm:block">
+                  <Image
+                    src={user.avatar_url}
+                    alt=""
+                    fill
+                    className="object-cover"
+                    sizes="32px"
+                    unoptimized={isLocalUploadImageUrl(user.avatar_url)}
+                  />
+                </span>
+              ) : null}
               <span
                 className="hidden max-w-[9rem] truncate text-xs text-stone-500 sm:inline"
                 title={user.email}

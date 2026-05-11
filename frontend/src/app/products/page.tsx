@@ -1,9 +1,9 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { ProductsCatalogView } from "@/components/ProductsCatalogView";
-import { fetchProductCategories, fetchProducts } from "@/lib/api";
+import { fetchProductCategories, fetchProducts, parseCatalogSort } from "@/lib/api";
 
 type Props = {
-  searchParams: Promise<{ q?: string; category?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; page?: string; sort?: string }>;
 };
 
 const PAGE_SIZE = 24;
@@ -19,12 +19,14 @@ export default async function ProductsPage({ searchParams }: Props) {
   const search = sp.q;
   const category = sp.category;
   const initialPage = parsePage(sp.page);
+  const initialSort = parseCatalogSort(sp.sort);
   const [data, categories] = await Promise.all([
     fetchProducts({
       page: initialPage,
       limit: PAGE_SIZE,
       search: search,
       category: category,
+      sort: initialSort,
     }),
     fetchProductCategories().catch(() => [] as string[]),
   ]);
@@ -41,6 +43,7 @@ export default async function ProductsPage({ searchParams }: Props) {
           initialPage={initialPage}
           initialQ={search?.trim() ?? ""}
           initialCategory={category}
+          initialSort={initialSort}
           pageSize={PAGE_SIZE}
         />
       </main>

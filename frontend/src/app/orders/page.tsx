@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
-import { fetchMyOrders, getToken, type OrderPublic } from "@/lib/api";
+import { fetchMyOrders, getToken, syncStripeCheckoutSession, type OrderPublic } from "@/lib/api";
+import { CART_CHANGED_EVENT } from "@/lib/cart";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderPublic[] | null>(null);
@@ -19,12 +20,29 @@ export default function OrdersPage() {
       });
       return;
     }
-    queueMicrotask(() => setErr(null));
-    fetchMyOrders(t)
-      .then((o) => queueMicrotask(() => setOrders(o)))
-      .catch((e) =>
-        queueMicrotask(() => setErr(e instanceof Error ? e.message : "Failed to load orders")),
-      );
+    void (async () => {
+      queueMicrotask(() => setErr(null));
+      const qs = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const sessionId = qs?.get("session_id");
+      const payment = qs?.get("payment");
+      if (payment === "stripe" && sessionId) {
+        try {
+          await syncStripeCheckoutSession(t, sessionId);
+          window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+          window.history.replaceState({}, "", "/orders");
+        } catch (e) {
+          queueMicrotask(() =>
+            setErr(e instanceof Error ? e.message : "Could not confirm Stripe payment."),
+          );
+        }
+      }
+      try {
+        const o = await fetchMyOrders(t);
+        queueMicrotask(() => setOrders(o));
+      } catch (e) {
+        queueMicrotask(() => setErr(e instanceof Error ? e.message : "Failed to load orders"));
+      }
+    })();
   }, []);
 
   return (
@@ -33,7 +51,9 @@ export default function OrdersPage() {
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-10">
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Orders</h1>
-          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">Your completed demo checkouts.</p>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
+            Completed orders from demo checkout or Stripe (<code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">payment_method</code> saved per order).
+          </p>
         </div>
 
         {err ? (
@@ -67,6 +87,12 @@ export default function OrdersPage() {
                   <p className="text-sm text-stone-500 dark:text-stone-400">
                     {new Date(o.created_at).toLocaleString()} ·{" "}
                     <span className="font-medium text-teal-700 dark:text-teal-400">{o.status}</span>
+                    {o.payment_method ? (
+                      <>
+                        {" · "}
+                        <span className="text-stone-600 dark:text-stone-400">Pay: {o.payment_method}</span>
+                      </>
+                    ) : null}
                   </p>
                   <p className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-50">
                     ${o.total_amount.toFixed(2)}
