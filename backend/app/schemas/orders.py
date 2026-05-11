@@ -14,6 +14,8 @@ class OrderLineIn(BaseModel):
 class OrderCreate(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
     payment_method: str | None = Field(default="demo", max_length=64)
+    gift_wrap: bool = False
+    gift_message: str | None = Field(default=None, max_length=500)
 
 
 class OrderItemPublic(BaseModel):
@@ -33,6 +35,8 @@ class OrderPublic(BaseModel):
     status: str
     total_amount: float
     payment_method: str | None
+    gift_wrap: bool
+    gift_message: str | None
     created_at: datetime
     items: list[OrderItemPublic]
 
@@ -44,6 +48,8 @@ def order_public(o: Order) -> OrderPublic:
         status=o.status,
         total_amount=float(o.total_amount),
         payment_method=o.payment_method,
+        gift_wrap=bool(getattr(o, "gift_wrap", False)),
+        gift_message=getattr(o, "gift_message", None),
         created_at=o.created_at,
         items=[
             OrderItemPublic(

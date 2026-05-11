@@ -1,20 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 type Props = {
   url: string;
   title: string;
 };
 
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getServerCanNativeShare() {
+  return false;
+}
+
+function getClientCanNativeShare() {
+  return typeof navigator !== "undefined" && typeof navigator.share === "function";
+}
+
 export function ProductShareRow({ url, title }: Props) {
   const [copied, setCopied] = useState(false);
-  /** Must stay false on first paint (SSR + hydrate) so markup matches; set in useEffect. */
-  const [canNativeShare, setCanNativeShare] = useState(false);
-
-  useEffect(() => {
-    setCanNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
-  }, []);
+  const canNativeShare = useSyncExternalStore(
+    subscribeToNothing,
+    getClientCanNativeShare,
+    getServerCanNativeShare,
+  );
 
   async function copyLink() {
     try {

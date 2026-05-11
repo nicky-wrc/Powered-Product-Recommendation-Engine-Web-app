@@ -12,6 +12,8 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.services.interaction_weights import interaction_weight
 
+GIFT_WRAP_FEE = Decimal("4.99")
+
 
 class CheckoutError(Exception):
     def __init__(self, status_code: int, detail: str):
@@ -26,6 +28,8 @@ def fulfill_checkout(
     *,
     payment_method: str,
     stripe_checkout_session_id: str | None = None,
+    gift_wrap: bool = False,
+    gift_message: str | None = None,
 ) -> Order:
     """
     Build a completed order, decrement stock, record purchase interactions, clear server cart.
@@ -51,9 +55,14 @@ def fulfill_checkout(
         if products[pid].stock < q:
             raise CheckoutError(409, f"Insufficient stock for {products[pid].name}")
 
-    total = Decimal("0")
+    subtotal = Decimal("0")
     for pid, q in qty_map.items():
-        total += products[pid].price * q
+        subtotal += products[pid].price * q
+
+    wrap_requested = bool(gift_wrap)
+    msg_clean = (gift_message or "").strip()[:500] if wrap_requested else None
+    wrap_fee = GIFT_WRAP_FEE if wrap_requested else Decimal("0")
+    total = subtotal + wrap_fee
 
     order = Order(
         user_id=user_id,
@@ -61,6 +70,8 @@ def fulfill_checkout(
         total_amount=total,
         payment_method=payment_method,
         stripe_checkout_session_id=stripe_checkout_session_id,
+        gift_wrap=wrap_requested,
+        gift_message=msg_clean if wrap_requested else None,
     )
     db.add(order)
     db.flush()

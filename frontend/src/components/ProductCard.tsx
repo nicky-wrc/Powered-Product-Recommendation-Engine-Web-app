@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
 import { CompareToggle } from "@/components/CompareToggle";
+import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
 type Props = { p: Product; priority?: boolean };
@@ -56,6 +57,7 @@ export function ProductCard({ p, priority = false }: Props) {
           ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-1 p-4">
+          <SustainabilityBadge product={p} className="mb-0.5" />
           <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-stone-900 dark:text-stone-50">
             {p.name}
           </p>

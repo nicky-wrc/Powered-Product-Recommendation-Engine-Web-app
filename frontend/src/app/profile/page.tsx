@@ -262,7 +262,8 @@ export default function ProfilePage() {
                   </button>
                 ) : null}
               </div>
-              <p className="text-sm text-stone-600 dark:text-stone-400">อีเมล: {user.email}</p>
+              <p className="text-base font-semibold text-stone-900 dark:text-stone-100">{dash(user.name)}</p>
+              <p className="text-xs text-stone-500 dark:text-stone-400">อีเมลสำหรับล็อกอิน: {user.email}</p>
               {err ? <p className="text-sm text-red-600 dark:text-red-400">{err}</p> : null}
               {okMsg ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{okMsg}</p> : null}
 

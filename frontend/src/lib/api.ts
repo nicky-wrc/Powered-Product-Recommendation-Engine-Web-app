@@ -483,22 +483,36 @@ export type OrderPublic = {
   status: string;
   total_amount: number;
   payment_method: string | null;
+  gift_wrap: boolean;
+  gift_message: string | null;
   created_at: string;
   items: { product_id: string; product_name: string; quantity: number; unit_price: number }[];
+};
+
+export type OrderCheckoutOptions = {
+  payment_method?: string;
+  gift_wrap?: boolean;
+  gift_message?: string | null;
 };
 
 export async function postOrder(
   token: string,
   items: { product_id: string; quantity: number }[],
-  payment_method = "demo",
+  options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
+  const { payment_method = "demo", gift_wrap = false, gift_message = null } = options;
   const r = await fetch(`${API_BASE}/api/orders`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ items, payment_method }),
+    body: JSON.stringify({
+      items,
+      payment_method,
+      gift_wrap,
+      gift_message: gift_message?.trim() ? gift_message.trim() : null,
+    }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
   return r.json();
@@ -515,14 +529,20 @@ export async function fetchPaymentStatus(): Promise<PaymentStatus> {
 export async function createStripeCheckoutSession(
   token: string,
   items: { product_id: string; quantity: number }[],
+  options: Pick<OrderCheckoutOptions, "gift_wrap" | "gift_message"> = {},
 ): Promise<{ url: string }> {
+  const { gift_wrap = false, gift_message = null } = options;
   const r = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({
+      items,
+      gift_wrap,
+      gift_message: gift_message?.trim() ? gift_message.trim() : null,
+    }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
   return r.json();

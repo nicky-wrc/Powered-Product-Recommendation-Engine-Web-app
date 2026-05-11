@@ -20,13 +20,23 @@ from app.models.order import Order
 from app.models.product import Product
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
-from app.services.checkout_fulfillment import CheckoutError, fulfill_checkout
+from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
+def _gift_opts_from_metadata(meta: dict) -> tuple[bool, str | None]:
+    wrap = str(meta.get("gift_wrap") or "0") == "1"
+    raw = meta.get("gift_message")
+    if wrap and isinstance(raw, str) and raw.strip():
+        return True, raw.strip()[:500]
+    return wrap, None
+
+
 class CheckoutSessionBody(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
+    gift_wrap: bool = False
+    gift_message: str | None = Field(default=None, max_length=500)
 
 
 def _stripe_enabled() -> bool:
@@ -88,12 +98,32 @@ def create_checkout_session(
             },
         )
 
+    if body.gift_wrap:
+        line_items.append(
+            {
+                "quantity": 1,
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": _to_cents(GIFT_WRAP_FEE),
+                    "product_data": {"name": "Gift wrapping"},
+                },
+            },
+        )
+
     compact_items = json.dumps([[str(pid), qty_map[pid]] for pid in pid_list], separators=(",", ":"))
     if len(compact_items) > 450:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Cart is too large for a single Stripe session; place a smaller order.",
         )
+
+    meta: dict[str, str] = {
+        "user_id": str(user.id),
+        "items": compact_items,
+        "gift_wrap": "1" if body.gift_wrap else "0",
+    }
+    if body.gift_wrap and body.gift_message and body.gift_message.strip():
+        meta["gift_message"] = body.gift_message.strip()[:450]
 
     base = settings.public_app_url.rstrip("/")
     stripe.api_key = settings.stripe_secret_key
@@ -105,10 +135,7 @@ def create_checkout_session(
             success_url=f"{base}/orders?payment=stripe&session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{base}/cart",
             client_reference_id=str(user.id),
-            metadata={
-                "user_id": str(user.id),
-                "items": compact_items,
-            },
+            metadata=meta,
         )
     except stripe.StripeError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Stripe error: {e!s}") from e
@@ -153,6 +180,8 @@ def sync_checkout_session(
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cart metadata.") from e
 
+    gift_wrap, gift_message = _gift_opts_from_metadata(meta)
+
     try:
         order = fulfill_checkout(
             db,
@@ -160,6 +189,8 @@ def sync_checkout_session(
             qty_map,
             payment_method="stripe",
             stripe_checkout_session_id=session.id,
+            gift_wrap=gift_wrap,
+            gift_message=gift_message,
         )
         db.commit()
     except CheckoutError as e:
@@ -197,12 +228,15 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
         user_id = UUID(uid_s)
         pairs: list[list] = json.loads(raw_items)
         qty_map = {UUID(str(p)): int(q) for p, q in pairs}
+        gift_wrap, gift_message = _gift_opts_from_metadata(meta)
         fulfill_checkout(
             db,
             user_id,
             qty_map,
             payment_method="stripe",
             stripe_checkout_session_id=session.id,
+            gift_wrap=gift_wrap,
+            gift_message=gift_message,
         )
         db.commit()
     except (CheckoutError, IntegrityError, json.JSONDecodeError, ValueError, TypeError):

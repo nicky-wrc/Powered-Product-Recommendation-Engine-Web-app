@@ -46,6 +46,8 @@ export default function CartPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [stripeAvailable, setStripeAvailable] = useState(false);
+  const [giftWrap, setGiftWrap] = useState(false);
+  const [giftMessage, setGiftMessage] = useState("");
 
   useEffect(() => {
     void fetchPaymentStatus()
@@ -168,6 +170,11 @@ export default function CartPage() {
       await postOrder(
         token,
         lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
+        {
+          payment_method: "demo",
+          gift_wrap: giftWrap,
+          gift_message: giftWrap ? giftMessage : null,
+        },
       );
       clearCart();
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
@@ -194,6 +201,10 @@ export default function CartPage() {
       const { url } = await createStripeCheckoutSession(
         token,
         lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
+        {
+          gift_wrap: giftWrap,
+          gift_message: giftWrap ? giftMessage : null,
+        },
       );
       window.location.assign(url);
     } catch (e) {
@@ -203,6 +214,8 @@ export default function CartPage() {
   }
 
   const subtotal = cartSubtotal(lines);
+  const GIFT_WRAP_FEE = 4.99;
+  const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
 
   return (
     <div className="min-h-screen">
@@ -324,10 +337,52 @@ export default function CartPage() {
                   })}
                 </ul>
 
+                <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-stone-300 text-teal-600 focus:ring-teal-500 dark:border-zinc-600"
+                      checked={giftWrap}
+                      onChange={(e) => setGiftWrap(e.target.checked)}
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-stone-900 dark:text-stone-100">
+                        Gift wrapping (+${GIFT_WRAP_FEE.toFixed(2)})
+                      </span>
+                      <span className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400">
+                        One flat fee per order — included in demo checkout and Stripe total.
+                      </span>
+                    </span>
+                  </label>
+                  {giftWrap ? (
+                    <label className="mt-3 block">
+                      <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Gift message (optional)</span>
+                      <textarea
+                        value={giftMessage}
+                        onChange={(e) => setGiftMessage(e.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        placeholder="e.g. Happy Birthday — open on the 12th!"
+                        className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900 outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                      />
+                    </label>
+                  ) : null}
+                </div>
+
                 <div className="flex flex-col gap-4 rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-50">
-                    Subtotal · ${subtotal.toFixed(2)}
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-sm tabular-nums text-stone-600 dark:text-stone-400">
+                      Subtotal · ${subtotal.toFixed(2)}
+                    </p>
+                    {giftWrap ? (
+                      <p className="text-sm tabular-nums text-stone-600 dark:text-stone-400">
+                        Gift wrapping · ${GIFT_WRAP_FEE.toFixed(2)}
+                      </p>
+                    ) : null}
+                    <p className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-50">
+                      Estimated total · ${orderTotal.toFixed(2)}
+                    </p>
+                  </div>
                   <div className="flex flex-col gap-2 sm:items-end">
                     <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
                       {stripeAvailable ? (

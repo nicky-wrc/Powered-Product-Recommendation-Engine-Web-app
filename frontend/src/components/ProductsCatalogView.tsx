@@ -208,6 +208,39 @@ export function ProductsCatalogView({
   return (
     <>
       <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 shadow-sm ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
+        <nav aria-label="Breadcrumb" className="mb-4 text-sm text-stone-600 dark:text-stone-400">
+          <ol className="flex flex-wrap items-center gap-1.5">
+            <li>
+              <Link href="/" className="hover:text-teal-700 hover:underline dark:hover:text-teal-400">
+                Home
+              </Link>
+            </li>
+            <li className="text-stone-400 dark:text-stone-500" aria-hidden>
+              /
+            </li>
+            <li>
+              <Link href="/products" className="hover:text-teal-700 hover:underline dark:hover:text-teal-400">
+                Catalog
+              </Link>
+            </li>
+            {category ? (
+              <>
+                <li className="text-stone-400 dark:text-stone-500" aria-hidden>
+                  /
+                </li>
+                <li className="font-medium text-stone-800 dark:text-stone-200">{category}</li>
+              </>
+            ) : null}
+            {displayQ ? (
+              <>
+                <li className="text-stone-400 dark:text-stone-500" aria-hidden>
+                  /
+                </li>
+                <li className="font-medium text-stone-800 dark:text-stone-200">{`"${displayQ}"`}</li>
+              </>
+            ) : null}
+          </ol>
+        </nav>
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Catalog</h1>

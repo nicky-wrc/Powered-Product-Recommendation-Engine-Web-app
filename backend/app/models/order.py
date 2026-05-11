@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,6 +18,8 @@ class Order(Base):
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     payment_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    gift_wrap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    gift_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

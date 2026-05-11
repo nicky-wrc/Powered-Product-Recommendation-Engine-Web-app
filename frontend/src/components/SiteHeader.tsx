@@ -193,10 +193,10 @@ export function SiteHeader() {
                 </span>
               ) : null}
               <span
-                className="hidden max-w-[9rem] truncate text-xs text-stone-500 sm:inline"
+                className="hidden max-w-[9rem] truncate text-xs font-medium text-stone-600 sm:inline dark:text-stone-300"
                 title={user.email}
               >
-                {user.email}
+                {user.name?.trim() || user.email}
               </span>
               <button
                 type="button"

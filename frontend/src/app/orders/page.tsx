@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ReorderOrderButton } from "@/components/ReorderOrderButton";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fetchMyOrders, getToken, syncStripeCheckoutSession, type OrderPublic } from "@/lib/api";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
@@ -105,6 +106,17 @@ export default function OrdersPage() {
                     </li>
                   ))}
                 </ul>
+                {o.gift_wrap ? (
+                  <p className="mt-3 rounded-lg border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+                    <span className="font-semibold">Gift wrapping</span>
+                    {o.gift_message ? (
+                      <>
+                        <span className="block mt-1 text-emerald-900/90 dark:text-emerald-200/90">{o.gift_message}</span>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                <ReorderOrderButton order={o} />
               </li>
             ))}
           </ul>

@@ -38,6 +38,8 @@ def apply_runtime_schema_patches() -> None:
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS province VARCHAR(128);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(32);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS country VARCHAR(128);",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_wrap BOOLEAN DEFAULT false;",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_message VARCHAR(500);",
         ):
             conn.execute(text(stmt))
 

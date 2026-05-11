@@ -9,6 +9,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
 import { fetchProduct, isLocalUploadImageUrl, productImageUrl } from "@/lib/api";
@@ -124,6 +125,7 @@ export default async function ProductDetailPage({ params }: Props) {
                 {p.category}
               </p>
             ) : null}
+            <SustainabilityBadge product={p} />
             <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50 md:text-4xl">
               {p.name}
             </h1>

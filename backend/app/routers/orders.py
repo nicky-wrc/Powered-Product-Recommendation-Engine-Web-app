@@ -32,6 +32,8 @@ def create_order(
             dict(qty_map),
             payment_method=body.payment_method or "demo",
             stripe_checkout_session_id=None,
+            gift_wrap=body.gift_wrap,
+            gift_message=body.gift_message,
         )
         db.commit()
     except CheckoutError as e:
