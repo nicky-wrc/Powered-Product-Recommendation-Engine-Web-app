@@ -1,9 +1,16 @@
 import { SiteHeader } from "@/components/SiteHeader";
 import { ProductsCatalogView } from "@/components/ProductsCatalogView";
-import { fetchProductCategories, fetchProducts, parseCatalogSort } from "@/lib/api";
+import { fetchProductCategories, fetchProducts, parseCatalogPrice, parseCatalogSort } from "@/lib/api";
 
 type Props = {
-  searchParams: Promise<{ q?: string; category?: string; page?: string; sort?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    category?: string;
+    page?: string;
+    sort?: string;
+    min_price?: string;
+    max_price?: string;
+  }>;
 };
 
 const PAGE_SIZE = 24;
@@ -20,6 +27,8 @@ export default async function ProductsPage({ searchParams }: Props) {
   const category = sp.category;
   const initialPage = parsePage(sp.page);
   const initialSort = parseCatalogSort(sp.sort);
+  const initialMinPrice = parseCatalogPrice(sp.min_price);
+  const initialMaxPrice = parseCatalogPrice(sp.max_price);
   const [data, categories] = await Promise.all([
     fetchProducts({
       page: initialPage,
@@ -27,6 +36,8 @@ export default async function ProductsPage({ searchParams }: Props) {
       search: search,
       category: category,
       sort: initialSort,
+      minPrice: initialMinPrice,
+      maxPrice: initialMaxPrice,
     }),
     fetchProductCategories().catch(() => [] as string[]),
   ]);
@@ -44,6 +55,8 @@ export default async function ProductsPage({ searchParams }: Props) {
           initialQ={search?.trim() ?? ""}
           initialCategory={category}
           initialSort={initialSort}
+          initialMinPrice={initialMinPrice}
+          initialMaxPrice={initialMaxPrice}
           pageSize={PAGE_SIZE}
         />
       </main>

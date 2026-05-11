@@ -237,6 +237,16 @@ export function parseCatalogSort(raw: string | undefined): CatalogSort {
   return "newest";
 }
 
+/** Optional non-negative price from URL query (undefined if missing/invalid). */
+export function parseCatalogPrice(raw: string | undefined): number | undefined {
+  if (raw == null) return undefined;
+  const t = String(raw).trim();
+  if (t === "") return undefined;
+  const n = Number.parseFloat(t);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
+}
+
 export async function fetchProducts(params: {
   page?: number;
   limit?: number;
@@ -245,6 +255,8 @@ export async function fetchProducts(params: {
   /** Only products with null or empty category */
   uncategorized?: boolean;
   sort?: CatalogSort;
+  minPrice?: number;
+  maxPrice?: number;
 }): Promise<{ products: Product[]; total: number; page: number; total_pages: number }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set("page", String(params.page));
@@ -253,6 +265,8 @@ export async function fetchProducts(params: {
   if (params.search) sp.set("search", params.search);
   if (params.uncategorized) sp.set("uncategorized", "true");
   if (params.sort && params.sort !== "newest") sp.set("sort", params.sort);
+  if (params.minPrice != null && Number.isFinite(params.minPrice)) sp.set("min_price", String(params.minPrice));
+  if (params.maxPrice != null && Number.isFinite(params.maxPrice)) sp.set("max_price", String(params.maxPrice));
   const r = await fetch(`${API_BASE}/api/products?${sp.toString()}`, {
     next: { revalidate: 15 },
   });

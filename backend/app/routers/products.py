@@ -2,7 +2,7 @@ import math
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,8 @@ def _apply_filters(
     search: str | None,
     *,
     uncategorized: bool = False,
+    min_price: float | None = None,
+    max_price: float | None = None,
 ):
     if uncategorized:
         cond = or_(Product.category.is_(None), Product.category == "")
@@ -38,6 +40,12 @@ def _apply_filters(
         q = f"%{search.strip()}%"
         stmt = stmt.where(Product.name.ilike(q))
         count_stmt = count_stmt.where(Product.name.ilike(q))
+    if min_price is not None:
+        stmt = stmt.where(Product.price >= min_price)
+        count_stmt = count_stmt.where(Product.price >= min_price)
+    if max_price is not None:
+        stmt = stmt.where(Product.price <= max_price)
+        count_stmt = count_stmt.where(Product.price <= max_price)
     return stmt, count_stmt
 
 
@@ -65,11 +73,26 @@ def list_products(
         "newest",
         description="Sort order: newest (created_at desc), price asc/desc, name A–Z",
     ),
+    min_price: float | None = Query(None, ge=0, description="Minimum unit price inclusive"),
+    max_price: float | None = Query(None, ge=0, description="Maximum unit price inclusive"),
     db: Session = Depends(get_db),
 ) -> ProductListResponse:
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "min_price must be less than or equal to max_price",
+        )
     stmt = select(Product)
     count_stmt = select(func.count()).select_from(Product)
-    stmt, count_stmt = _apply_filters(stmt, count_stmt, category, search, uncategorized=uncategorized)
+    stmt, count_stmt = _apply_filters(
+        stmt,
+        count_stmt,
+        category,
+        search,
+        uncategorized=uncategorized,
+        min_price=min_price,
+        max_price=max_price,
+    )
     total = int(db.scalar(count_stmt) or 0)
     if sort == "price_asc":
         stmt = stmt.order_by(Product.price.asc(), Product.id.asc())

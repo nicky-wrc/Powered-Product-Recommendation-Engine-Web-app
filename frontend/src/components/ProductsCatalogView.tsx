@@ -15,16 +15,33 @@ type Props = {
   initialQ: string;
   initialCategory: string | undefined;
   initialSort: CatalogSort;
+  initialMinPrice: number | undefined;
+  initialMaxPrice: number | undefined;
   pageSize: number;
 };
 
-function replaceCatalogUrl(q: string, category: string | undefined, page: number, sort: CatalogSort) {
+type CatalogPriceFilter = { min?: number; max?: number };
+
+function normalizePriceFilter(min?: number, max?: number): CatalogPriceFilter {
+  if (min != null && max != null && min > max) return { min: max, max: min };
+  return { min, max };
+}
+
+function replaceCatalogUrl(
+  q: string,
+  category: string | undefined,
+  page: number,
+  sort: CatalogSort,
+  prices: CatalogPriceFilter,
+) {
   const p = new URLSearchParams();
   if (category) p.set("category", category);
   const t = q.trim();
   if (t) p.set("q", t);
   if (page > 1) p.set("page", String(page));
   if (sort !== "newest") p.set("sort", sort);
+  if (prices.min != null) p.set("min_price", String(prices.min));
+  if (prices.max != null) p.set("max_price", String(prices.max));
   const qs = p.toString();
   const path = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
   window.history.replaceState(null, "", path);
@@ -39,12 +56,23 @@ export function ProductsCatalogView({
   initialQ,
   initialCategory,
   initialSort,
+  initialMinPrice,
+  initialMaxPrice,
   pageSize,
 }: Props) {
   const [query, setQuery] = useState(initialQ);
   const [debouncedQuery, setDebouncedQuery] = useState(initialQ);
   const [category, setCategory] = useState<string | undefined>(initialCategory);
   const [sort, setSort] = useState<CatalogSort>(initialSort);
+  const [minPriceInput, setMinPriceInput] = useState(
+    initialMinPrice != null ? String(initialMinPrice) : "",
+  );
+  const [maxPriceInput, setMaxPriceInput] = useState(
+    initialMaxPrice != null ? String(initialMaxPrice) : "",
+  );
+  const [debouncedPrices, setDebouncedPrices] = useState<CatalogPriceFilter>(() =>
+    normalizePriceFilter(initialMinPrice, initialMaxPrice),
+  );
   const [page, setPage] = useState(initialPage);
   const [products, setProducts] = useState<Product[]>(initialProducts);
   const [total, setTotal] = useState(initialTotal);
@@ -61,6 +89,20 @@ export function ProductsCatalogView({
     const id = window.setTimeout(() => setDebouncedQuery(query), 300);
     return () => window.clearTimeout(id);
   }, [query]);
+
+  useEffect(() => {
+    const tid = window.setTimeout(() => {
+      const parse = (s: string): number | undefined => {
+        const t = s.trim();
+        if (!t) return undefined;
+        const n = Number.parseFloat(t);
+        if (!Number.isFinite(n) || n < 0) return undefined;
+        return n;
+      };
+      setDebouncedPrices(normalizePriceFilter(parse(minPriceInput), parse(maxPriceInput)));
+    }, 400);
+    return () => window.clearTimeout(tid);
+  }, [minPriceInput, maxPriceInput]);
 
   useEffect(() => {
     const q = query.trim();
@@ -88,10 +130,16 @@ export function ProductsCatalogView({
       return;
     }
     setPage(1);
-  }, [debouncedQuery, category]);
+  }, [debouncedQuery, category, debouncedPrices.min, debouncedPrices.max]);
 
   const runFetch = useCallback(
-    async (q: string, cat: string | undefined, pageNum: number, sortOrder: CatalogSort) => {
+    async (
+      q: string,
+      cat: string | undefined,
+      pageNum: number,
+      sortOrder: CatalogSort,
+      prices: CatalogPriceFilter,
+    ) => {
       setLoading(true);
       setErr(null);
       try {
@@ -101,6 +149,8 @@ export function ProductsCatalogView({
           search: q.trim() || undefined,
           category: cat || undefined,
           sort: sortOrder,
+          minPrice: prices.min,
+          maxPrice: prices.max,
         });
         const tp = Math.max(1, r.total_pages);
         let currentPage = pageNum;
@@ -113,12 +163,14 @@ export function ProductsCatalogView({
             search: q.trim() || undefined,
             category: cat || undefined,
             sort: sortOrder,
+            minPrice: prices.min,
+            maxPrice: prices.max,
           });
         }
         setProducts(r.products);
         setTotal(r.total);
         setTotalPages(Math.max(1, r.total_pages));
-        replaceCatalogUrl(q, cat, currentPage, sortOrder);
+        replaceCatalogUrl(q, cat, currentPage, sortOrder, prices);
       } catch (e) {
         setErr(formatNetworkError(e));
       } finally {
@@ -133,8 +185,11 @@ export function ProductsCatalogView({
       skipFetchOnce.current = false;
       return;
     }
-    void runFetch(debouncedQuery, category, page, sort);
-  }, [debouncedQuery, category, page, sort, runFetch]);
+    void runFetch(debouncedQuery, category, page, sort, {
+      min: debouncedPrices.min,
+      max: debouncedPrices.max,
+    });
+  }, [debouncedQuery, category, page, sort, debouncedPrices.min, debouncedPrices.max, runFetch]);
 
   function selectCategory(next: string | undefined) {
     setCategory(next);
@@ -160,6 +215,8 @@ export function ProductsCatalogView({
               {loading ? "Updating…" : `${total} products`}
               {!loading && displayQ ? ` · “${displayQ}”` : ""}
               {!loading && subtitleCat ? ` · ${subtitleCat}` : ""}
+              {!loading && debouncedPrices.min != null ? ` · min $${debouncedPrices.min.toFixed(2)}` : ""}
+              {!loading && debouncedPrices.max != null ? ` · max $${debouncedPrices.max.toFixed(2)}` : ""}
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
@@ -238,6 +295,50 @@ export function ProductsCatalogView({
               {c}
             </button>
           ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-stone-200/80 pt-4 dark:border-zinc-800">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="catalog-min-price" className="text-xs font-medium text-stone-600 dark:text-stone-400">
+              Min price
+            </label>
+            <input
+              id="catalog-min-price"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="Any"
+              value={minPriceInput}
+              onChange={(e) => setMinPriceInput(e.target.value)}
+              className="w-28 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-100"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="catalog-max-price" className="text-xs font-medium text-stone-600 dark:text-stone-400">
+              Max price
+            </label>
+            <input
+              id="catalog-max-price"
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              placeholder="Any"
+              value={maxPriceInput}
+              onChange={(e) => setMaxPriceInput(e.target.value)}
+              className="w-28 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-100"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMinPriceInput("");
+              setMaxPriceInput("");
+            }}
+            className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 transition hover:bg-stone-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-stone-300 dark:hover:bg-zinc-800"
+          >
+            Clear prices
+          </button>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-stone-200/80 pt-4 dark:border-zinc-800">
           <label
