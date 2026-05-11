@@ -15,26 +15,23 @@ import { WISHLIST_CHANGED_EVENT, wishlistCount } from "@/lib/wishlist";
 const navClass =
   "rounded-lg px-2 py-1.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-zinc-800 dark:hover:text-white";
 
+/** Served from FastAPI `StaticFiles` at `backend/uploads/logo/` (proxied as `/uploads/...` in dev). */
+const BRAND_LOGO_PATH = "/uploads/logo/d93bb3e1-ccda-4305-badf-0bb6941439fd.jfif";
+
 function BrandMark() {
   return (
     <span
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-700 text-white shadow-md shadow-teal-600/30 ring-1 ring-white/35 dark:shadow-teal-900/40 dark:ring-white/15"
+      className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg"
       aria-hidden
     >
-      <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-white/25" />
-      <svg
-        viewBox="0 0 24 24"
-        className="relative h-[1.125rem] w-[1.125rem]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.85"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="8" cy="20" r="1.25" />
-        <circle cx="18" cy="20" r="1.25" />
-        <path d="M2.05 3.05h2.6l1.9 9.55a1.75 1.75 0 0 0 1.72 1.41h9.36a1.75 1.75 0 0 0 1.72-1.37l1.45-6.59H5.65" />
-      </svg>
+      <Image
+        src={BRAND_LOGO_PATH}
+        alt=""
+        fill
+        className="object-cover"
+        sizes="32px"
+        unoptimized
+      />
     </span>
   );
 }
