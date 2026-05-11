@@ -72,6 +72,8 @@ const emptyDraft: FormDraft = {
 /** Sentinel for inventory chip "ไม่มีหมวด" — not a real API category name */
 const INV_FILTER_UNCATEGORIZED = "__uncategorized__" as const;
 
+const INVENTORY_PAGE_SIZE = 25;
+
 export function AdminProductManager({ token }: Props) {
   const createFileRef = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
@@ -91,9 +93,17 @@ export function AdminProductManager({ token }: Props) {
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   /** Inventory list filter: null = all; INV_FILTER_UNCATEGORIZED = empty category; else category name */
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string | null>(null);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 320);
+    const t = setTimeout(() => {
+      const next = searchInput.trim();
+      setDebouncedSearch((prev) => {
+        if (prev !== next) setInventoryPage(1);
+        return next;
+      });
+    }, 320);
     return () => clearTimeout(t);
   }, [searchInput]);
 
@@ -103,8 +113,8 @@ export function AdminProductManager({ token }: Props) {
       const uncategorized = inventoryCategoryFilter === INV_FILTER_UNCATEGORIZED;
       const [r, cats] = await Promise.all([
         fetchProducts({
-          page: 1,
-          limit: 100,
+          page: inventoryPage,
+          limit: INVENTORY_PAGE_SIZE,
           search: debouncedSearch || undefined,
           uncategorized: uncategorized || undefined,
           category: !uncategorized && inventoryCategoryFilter ? inventoryCategoryFilter : undefined,
@@ -113,13 +123,18 @@ export function AdminProductManager({ token }: Props) {
       ]);
       setProducts(r.products);
       setTotal(r.total);
+      const tp = Math.max(1, r.total_pages);
+      setTotalPages(tp);
       setCategoryOptions(cats);
+      if (inventoryPage > tp) {
+        setInventoryPage(tp);
+      }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed to list products");
+      setErr(e instanceof Error ? e.message : "โหลดรายการสินค้าไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, inventoryCategoryFilter]);
+  }, [debouncedSearch, inventoryCategoryFilter, inventoryPage]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -156,9 +171,9 @@ export function AdminProductManager({ token }: Props) {
     try {
       const price = Number(createForm.price);
       const stock = createForm.stock === "" ? 0 : Number(createForm.stock);
-      if (!createForm.name.trim()) throw new Error("Name is required");
-      if (!Number.isFinite(price) || price < 0) throw new Error("Valid price required");
-      if (!Number.isFinite(stock) || stock < 0) throw new Error("Valid stock required");
+      if (!createForm.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
+      if (!Number.isFinite(price) || price < 0) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
+      if (!Number.isFinite(stock) || stock < 0) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
       await adminCreateProduct(token, {
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
@@ -169,10 +184,10 @@ export function AdminProductManager({ token }: Props) {
         stock,
       });
       setCreateForm(emptyDraft);
-      setMsg("Product created.");
+      setMsg("สร้างสินค้าแล้ว");
       await fetchList();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Create failed");
+      setErr(e instanceof Error ? e.message : "สร้างสินค้าไม่สำเร็จ");
     } finally {
       setBusyId(null);
     }
@@ -187,9 +202,9 @@ export function AdminProductManager({ token }: Props) {
     try {
       const price = form.price === "" ? undefined : Number(form.price);
       const stock = form.stock === "" ? undefined : Number(form.stock);
-      if (!form.name.trim()) throw new Error("Name is required");
-      if (price !== undefined && (!Number.isFinite(price) || price < 0)) throw new Error("Valid price required");
-      if (stock !== undefined && (!Number.isFinite(stock) || stock < 0)) throw new Error("Valid stock required");
+      if (!form.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
+      if (price !== undefined && (!Number.isFinite(price) || price < 0)) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
+      if (stock !== undefined && (!Number.isFinite(stock) || stock < 0)) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
       await adminUpdateProduct(token, editingId, {
         name: form.name.trim(),
         description: form.description.trim() || null,
@@ -199,28 +214,28 @@ export function AdminProductManager({ token }: Props) {
         image_url: form.image_url.trim() || null,
         stock,
       });
-      setMsg("Product updated.");
+      setMsg("บันทึกการแก้ไขแล้ว");
       cancelEdit();
       await fetchList();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Update failed");
+      setErr(e instanceof Error ? e.message : "บันทึกไม่สำเร็จ");
     } finally {
       setBusyId(null);
     }
   }
 
   async function remove(p: Product) {
-    if (!window.confirm(`Delete “${p.name}”? This fails if the product is on any order.`)) return;
+    if (!window.confirm(`ลบสินค้า "${p.name}"?\nถ้าสินค้านี้อยู่ในคำสั่งซื้อ ระบบจะไม่ให้ลบ (409)`)) return;
     setBusyId(p.id);
     setMsg(null);
     setErr(null);
     try {
       await adminDeleteProduct(token, p.id);
-      setMsg("Product deleted.");
+      setMsg("ลบสินค้าแล้ว");
       if (editingId === p.id) cancelEdit();
       await fetchList();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Delete failed");
+      setErr(e instanceof Error ? e.message : "ลบไม่สำเร็จ");
     } finally {
       setBusyId(null);
     }
@@ -247,19 +262,22 @@ export function AdminProductManager({ token }: Props) {
     }
   }
 
+  const invRangeStart = total === 0 ? 0 : (inventoryPage - 1) * INVENTORY_PAGE_SIZE + 1;
+  const invRangeEnd = Math.min(inventoryPage * INVENTORY_PAGE_SIZE, total);
+
   return (
     <div className="rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 md:p-8">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">Catalog (admin)</h2>
+          <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">แคตตาล็อก (แอดมิน)</h2>
           <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-            Create, edit, or remove products. Deletion is blocked for SKUs referenced by orders (HTTP 409).
+            เพิ่ม แก้ไข หรือลบสินค้า — ถ้าสินค้าถูกใช้ในคำสั่งซื้อแล้วจะลบไม่ได้ (HTTP 409)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="search"
-            placeholder="Search name…"
+            placeholder="ค้นชื่อสินค้า…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="min-w-[12rem] rounded-xl border border-stone-200 bg-white/90 px-3 py-2 text-sm text-stone-900 shadow-inner outline-none ring-stone-900/5 placeholder:text-stone-400 focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
@@ -269,7 +287,7 @@ export function AdminProductManager({ token }: Props) {
             onClick={() => void fetchList()}
             className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-xs font-semibold text-stone-800 transition hover:bg-stone-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:bg-zinc-800"
           >
-            Refresh
+            รีเฟรช
           </button>
         </div>
       </div>
@@ -409,7 +427,7 @@ export function AdminProductManager({ token }: Props) {
         <section className="w-full min-h-0 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h3 className="text-xl font-bold text-stone-900 dark:text-stone-50">สต็อกสินค้า</h3>
+              <h3 className="text-lg font-bold text-stone-900 dark:text-stone-50">สต็อกสินค้า</h3>
               <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">
                 {total} รายการที่ตรงกับตัวกรอง
                 {inventoryCategoryFilter === INV_FILTER_UNCATEGORIZED
@@ -427,11 +445,14 @@ export function AdminProductManager({ token }: Props) {
             <p className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
               กรองตามหมวด
             </p>
-            <div className="mt-2 flex max-h-48 flex-wrap gap-2.5 overflow-y-auto py-1 sm:max-h-none">
+            <div className="mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto py-0.5 sm:max-h-none">
               <button
                 type="button"
-                onClick={() => setInventoryCategoryFilter(null)}
-                className={`min-h-11 rounded-full px-5 py-2.5 text-base font-semibold transition ${
+                onClick={() => {
+                  setInventoryCategoryFilter(null);
+                  setInventoryPage(1);
+                }}
+                className={`min-h-9 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
                   inventoryCategoryFilter === null
                     ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/20"
                     : "border border-stone-200 bg-white text-stone-700 hover:border-teal-300 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-200 dark:hover:border-teal-700"
@@ -441,8 +462,11 @@ export function AdminProductManager({ token }: Props) {
               </button>
               <button
                 type="button"
-                onClick={() => setInventoryCategoryFilter(INV_FILTER_UNCATEGORIZED)}
-                className={`min-h-11 rounded-full px-5 py-2.5 text-base font-semibold transition ${
+                onClick={() => {
+                  setInventoryCategoryFilter(INV_FILTER_UNCATEGORIZED);
+                  setInventoryPage(1);
+                }}
+                className={`min-h-9 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
                   inventoryCategoryFilter === INV_FILTER_UNCATEGORIZED
                     ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/20"
                     : "border border-stone-200 bg-white text-stone-700 hover:border-teal-300 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-200 dark:hover:border-teal-700"
@@ -454,8 +478,11 @@ export function AdminProductManager({ token }: Props) {
                 <button
                   key={c}
                   type="button"
-                  onClick={() => setInventoryCategoryFilter(c)}
-                  className={`min-h-11 rounded-full px-5 py-2.5 text-base font-semibold transition ${
+                  onClick={() => {
+                    setInventoryCategoryFilter(c);
+                    setInventoryPage(1);
+                  }}
+                  className={`min-h-9 rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${
                     inventoryCategoryFilter === c
                       ? "bg-gradient-to-r from-teal-600 to-emerald-600 text-white shadow-md shadow-teal-600/20"
                       : "border border-stone-200 bg-white text-stone-700 hover:border-teal-300 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-200 dark:hover:border-teal-700"
@@ -468,6 +495,42 @@ export function AdminProductManager({ token }: Props) {
             <p className="mt-2 text-[11px] text-stone-500 dark:text-zinc-500">
               คลิกหมวดหรือ “ไม่มีหมวด” เพื่อโหลดเฉพาะกลุ่มนั้น (ใช้ร่วมกับช่องค้นหาด้านบนได้)
             </p>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-lg border border-stone-200/80 bg-stone-100/40 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900/40 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-stone-600 dark:text-stone-400 sm:text-sm">
+              {total === 0 ? (
+                "ไม่มีรายการในหน้านี้"
+              ) : (
+                <>
+                  แสดง <span className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{invRangeStart}</span>
+                  –
+                  <span className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{invRangeEnd}</span>
+                  {"จาก "}
+                  <span className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{total}</span>
+                  {" รายการ · หน้า "}
+                  <span className="tabular-nums">{inventoryPage}</span> / {totalPages}
+                </>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={loading || inventoryPage <= 1}
+                onClick={() => setInventoryPage((p) => Math.max(1, p - 1))}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-800 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:bg-zinc-800"
+              >
+                ก่อนหน้า
+              </button>
+              <button
+                type="button"
+                disabled={loading || inventoryPage >= totalPages}
+                onClick={() => setInventoryPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-800 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:bg-zinc-800"
+              >
+                ถัดไป
+              </button>
+            </div>
           </div>
 
           <div className="max-h-[calc(100vh-14rem)] min-h-[28rem] space-y-3 overflow-y-auto rounded-2xl border border-stone-200/90 bg-stone-50/40 p-3 shadow-inner dark:border-zinc-700 dark:bg-zinc-900/30 md:min-h-[32rem] md:p-4 lg:max-h-[calc(100vh-10rem)] lg:min-h-[36rem]">
@@ -511,7 +574,7 @@ export function AdminProductManager({ token }: Props) {
                           list="admin-category-datalist-edit"
                           value={form.category}
                           onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                          placeholder="Category — เลือกหรือพิมพ์ใหม่"
+                          placeholder="หมวด — เลือกหรือพิมพ์ใหม่"
                           className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
                         />
                         <datalist id="admin-category-datalist-edit">
@@ -521,7 +584,7 @@ export function AdminProductManager({ token }: Props) {
                         </datalist>
                       </div>
                       <div className="sm:col-span-2">
-                        <p className="mb-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">Tags</p>
+                        <p className="mb-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">แท็ก</p>
                         <TagInput
                           value={form.tags}
                           onChange={(tags) => setForm((f) => ({ ...f, tags }))}
@@ -558,20 +621,20 @@ export function AdminProductManager({ token }: Props) {
                         className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950 sm:col-span-2"
                       />
                     </div>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="submit"
                         disabled={busyId === editingId || uploading !== null}
-                        className="rounded-xl bg-teal-600 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-teal-600/20 hover:bg-teal-500 disabled:opacity-50"
+                        className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-teal-600/20 hover:bg-teal-500 disabled:opacity-50"
                       >
-                        {busyId === editingId ? "Saving…" : "Save changes"}
+                        {busyId === editingId ? "กำลังบันทึก…" : "บันทึก"}
                       </button>
                       <button
                         type="button"
                         onClick={cancelEdit}
-                        className="rounded-xl border border-stone-300 px-6 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50 dark:border-zinc-600 dark:text-stone-200 dark:hover:bg-zinc-800"
+                        className="rounded-lg border border-stone-300 px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 dark:border-zinc-600 dark:text-stone-200 dark:hover:bg-zinc-800"
                       >
-                        Cancel
+                        ยกเลิก
                       </button>
                     </div>
                   </form>
@@ -620,12 +683,12 @@ export function AdminProductManager({ token }: Props) {
                             </span>
                           </div>
                         </div>
-                        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                        <div className="flex w-full shrink-0 flex-col gap-1.5 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                           <button
                             type="button"
                             onClick={() => startEdit(p)}
                             disabled={busyId !== null || uploading !== null}
-                            className="min-h-12 w-full rounded-xl border-2 border-stone-200 bg-white px-6 py-3 text-base font-semibold text-stone-800 shadow-sm transition hover:border-teal-400 hover:bg-teal-50/60 active:scale-[0.98] disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:border-teal-600 dark:hover:bg-zinc-800 sm:w-auto"
+                            className="rounded-md border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-800 shadow-sm transition hover:border-teal-300 hover:bg-teal-50/50 active:scale-[0.99] disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:border-teal-700 dark:hover:bg-zinc-800 sm:w-auto"
                           >
                             แก้ไข
                           </button>
@@ -633,7 +696,7 @@ export function AdminProductManager({ token }: Props) {
                             type="button"
                             onClick={() => void remove(p)}
                             disabled={busyId !== null || uploading !== null}
-                            className="min-h-12 w-full rounded-xl border-2 border-rose-300 bg-rose-50 px-6 py-3 text-base font-semibold text-rose-900 transition hover:bg-rose-100 active:scale-[0.98] disabled:opacity-50 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-100 dark:hover:bg-rose-950 sm:w-auto"
+                            className="rounded-md border border-rose-200 bg-rose-50/90 px-3 py-1.5 text-xs font-semibold text-rose-800 transition hover:bg-rose-100 active:scale-[0.99] disabled:opacity-50 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-200 dark:hover:bg-rose-950 sm:w-auto"
                           >
                             ลบ
                           </button>

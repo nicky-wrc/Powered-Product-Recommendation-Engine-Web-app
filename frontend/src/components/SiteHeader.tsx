@@ -11,6 +11,30 @@ import { CART_CHANGED_EVENT, cartItemCount } from "@/lib/cart";
 const navClass =
   "rounded-lg px-2 py-1.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-zinc-800 dark:hover:text-white";
 
+function BrandMark() {
+  return (
+    <span
+      className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-cyan-500 via-teal-500 to-emerald-700 text-white shadow-md shadow-teal-600/30 ring-1 ring-white/35 dark:shadow-teal-900/40 dark:ring-white/15"
+      aria-hidden
+    >
+      <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-white/25" />
+      <svg
+        viewBox="0 0 24 24"
+        className="relative h-[1.125rem] w-[1.125rem]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="8" cy="20" r="1.25" />
+        <circle cx="18" cy="20" r="1.25" />
+        <path d="M2.05 3.05h2.6l1.9 9.55a1.75 1.75 0 0 0 1.72 1.41h9.36a1.75 1.75 0 0 0 1.72-1.37l1.45-6.59H5.65" />
+      </svg>
+    </span>
+  );
+}
+
 export function SiteHeader() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -58,12 +82,13 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <Link
           href="/"
-          className="group flex items-center gap-2 text-sm font-semibold tracking-tight text-stone-900 dark:text-stone-50"
+          aria-label="NickyShopEngine home"
+          className="group flex min-w-0 max-w-[calc(100vw-11rem)] items-center gap-2 text-sm font-semibold tracking-tight text-stone-900 sm:max-w-none dark:text-stone-50"
         >
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-emerald-700 text-xs font-bold text-white shadow-md shadow-teal-500/20">
-            R
+          <BrandMark />
+          <span className="truncate text-xs font-semibold leading-tight sm:text-sm group-hover:text-teal-700 dark:group-hover:text-teal-400">
+            NickyShopEngine
           </span>
-          <span className="group-hover:text-teal-700 dark:group-hover:text-teal-400">RecEngine</span>
         </Link>
         <nav className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">
           <Link href="/products" className={navClass}>

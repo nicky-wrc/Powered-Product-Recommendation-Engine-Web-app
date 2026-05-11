@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RecEngine — Recommendation MVP",
+  title: "NickyShopEngine — Recommendation MVP",
   description: "E‑commerce MVP with personalized recommendations",
 };
 

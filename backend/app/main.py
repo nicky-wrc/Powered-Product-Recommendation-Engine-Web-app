@@ -13,7 +13,12 @@ from app.middleware.request_id import RequestIdMiddleware
 from app.models import CartItem, Interaction, Order, OrderItem, Product, Recommendation, User  # noqa: F401
 from app.routers import admin, auth, cart, events, health, orders, products, recommendations
 from app.services.bootstrap_admin import ensure_bootstrap_admin
-from app.services.seed import repair_legacy_image_urls, seed_products_if_empty
+from app.services.seed import (
+    insert_missing_demo_products,
+    repair_legacy_image_urls,
+    seed_products_if_empty,
+    sync_demo_catalog_images,
+)
 from app.upload_paths import PRODUCT_IMAGES_DIR, UPLOADS_ROOT
 
 
@@ -24,7 +29,9 @@ async def lifespan(_app: FastAPI):
         db = SessionLocal()
         try:
             seed_products_if_empty(db)
+            insert_missing_demo_products(db)
             repair_legacy_image_urls(db)
+            sync_demo_catalog_images(db)
             ensure_bootstrap_admin(db)
         finally:
             db.close()

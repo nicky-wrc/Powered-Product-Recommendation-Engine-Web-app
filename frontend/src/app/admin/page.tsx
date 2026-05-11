@@ -23,7 +23,7 @@ export default function AdminPage() {
       queueMicrotask(() => {
         setMe(null);
         setLoading(false);
-        setErr("Log in to view this page.");
+        setErr("กรุณาเข้าสู่ระบบเพื่อดูหน้านี้");
       });
       return;
     }
@@ -33,15 +33,15 @@ export default function AdminPage() {
       .then((u: Me) => {
         setMe(u);
         if (!u.is_admin) {
-          setErr("Admin only. Set is_admin=true for your user in the database.");
+          setErr("เฉพาะแอดมินเท่านั้น ตั้งค่า is_admin=true ให้ user ในฐานข้อมูล");
           setLoading(false);
           return;
         }
         return fetchAdminAnalytics(auth)
           .then(setData)
-          .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load analytics"));
+          .catch((e) => setErr(e instanceof Error ? e.message : "โหลดสถิติไม่สำเร็จ"));
       })
-      .catch(() => setErr("Could not verify session."))
+      .catch(() => setErr("ยืนยันเซสชันไม่สำเร็จ"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -63,9 +63,9 @@ export default function AdminPage() {
   const chartRows = useMemo(() => {
     if (!data) return [];
     return [
-      { label: "Views", value: data.total_views },
-      { label: "Clicks", value: data.total_clicks },
-      { label: "Purchases (events)", value: data.total_purchases },
+      { label: "ดูสินค้า", value: data.total_views },
+      { label: "คลิก", value: data.total_clicks },
+      { label: "ซื้อ (event)", value: data.total_purchases },
     ];
   }, [data]);
 
@@ -76,20 +76,21 @@ export default function AdminPage() {
       <SiteHeader />
       <main className="mx-auto max-w-6xl space-y-8 px-4 py-10">
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
-          <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Admin dashboard</h1>
+          <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">แดชบอร์ดแอดมิน</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            Overview from <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">interactions</code> and{" "}
-            <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">orders</code>.
+            ภาพรวมจากตาราง{" "}
+            <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">interactions</code> และ{" "}
+            <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">orders</code>
           </p>
         </div>
 
-        {loading ? <p className="text-sm text-stone-500">Loading…</p> : null}
+        {loading ? <p className="text-sm text-stone-500">กำลังโหลด…</p> : null}
 
         {err ? (
           <div className="rounded-2xl border border-amber-200/90 bg-amber-50/90 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
             {err}{" "}
             <Link href="/login" className="font-semibold text-teal-800 underline dark:text-teal-300">
-              Log in
+              เข้าสู่ระบบ
             </Link>
           </div>
         ) : null}
@@ -97,30 +98,30 @@ export default function AdminPage() {
         {data && me?.is_admin ? (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Metric title="Users" value={data.total_users} />
-              <Metric title="Products" value={data.total_products} />
-              <Metric title="Orders" value={data.total_orders} />
-              <Metric title="Revenue" value={data.revenue} format="money" />
+              <Metric title="ผู้ใช้" value={data.total_users} />
+              <Metric title="สินค้า" value={data.total_products} />
+              <Metric title="คำสั่งซื้อ" value={data.total_orders} />
+              <Metric title="รายได้" value={data.revenue} format="money" />
               <Metric title="CTR" value={data.ctr} format="pct" />
             </div>
 
             {ready ? (
               <div className="rounded-3xl border border-stone-200/90 bg-gradient-to-br from-teal-50/80 to-white/90 p-6 shadow-sm dark:border-zinc-800 dark:from-teal-950/40 dark:to-zinc-950/80 md:p-7">
-                <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">System status</h2>
+                <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">สถานะระบบ</h2>
                 <p className="mt-1 text-xs text-stone-600 dark:text-stone-400">
-                  Readiness probe · API version <span className="font-mono">{ready.version}</span>
+                  Readiness · เวอร์ชัน API <span className="font-mono">{ready.version}</span>
                 </p>
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
                   <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-zinc-900/80">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Database</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">ฐานข้อมูล</dt>
                     <dd className="mt-1 font-semibold capitalize text-teal-800 dark:text-teal-300">{ready.checks.database}</dd>
                   </div>
                   <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-zinc-900/80">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Redis cache</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">แคช Redis</dt>
                     <dd className="mt-1 font-semibold capitalize text-teal-800 dark:text-teal-300">{ready.checks.redis}</dd>
                   </div>
                   <div className="rounded-xl bg-white/80 px-4 py-3 dark:bg-zinc-900/80">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">Overall</dt>
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">รวม</dt>
                     <dd className="mt-1 font-semibold capitalize text-emerald-800 dark:text-emerald-300">{ready.status}</dd>
                   </div>
                 </dl>
@@ -133,8 +134,8 @@ export default function AdminPage() {
             ) : null}
 
             <div className="rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 md:p-8">
-              <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">Event volume</h2>
-              <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">Relative scale (max in this view = 100%).</p>
+              <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">ปริมาณอีเวนต์</h2>
+              <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">สัดส่วนเทียบค่าสูงสุดในมุมมองนี้ (100%)</p>
               <div className="mt-6 space-y-4">
                 {chartRows.map((row) => (
                   <div key={row.label}>
@@ -157,7 +158,7 @@ export default function AdminPage() {
 
             <p className="text-xs text-stone-500 dark:text-stone-400">{data.note}</p>
             <Link href="/" className="text-sm font-medium text-teal-700 hover:underline dark:text-teal-400">
-              ← Back home
+              กลับหน้าหลัก
             </Link>
           </>
         ) : null}
