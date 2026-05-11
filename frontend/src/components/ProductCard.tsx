@@ -5,6 +5,8 @@ import Link from "next/link";
 
 import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
+import { CompareToggle } from "@/components/CompareToggle";
+import { WishlistHeart } from "@/components/WishlistHeart";
 
 type Props = { p: Product; priority?: boolean };
 
@@ -29,6 +31,10 @@ export function ProductCard({ p, priority = false }: Props) {
     <div className="group/card flex flex-col overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm ring-1 ring-stone-900/5 transition duration-300 hover:-translate-y-0.5 hover:border-teal-200/80 hover:shadow-lg hover:shadow-teal-900/5 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-white/5 dark:hover:border-teal-800/60 dark:hover:shadow-teal-900/20">
       <Link href={`/products/${p.id}`} className="flex min-h-0 flex-1 flex-col">
         <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100 dark:bg-zinc-900">
+          <WishlistHeart
+            product={p}
+            className="absolute right-2 top-2 z-10"
+          />
           {img ? (
             <Image
               src={img}
@@ -59,13 +65,16 @@ export function ProductCard({ p, priority = false }: Props) {
         </div>
       </Link>
       <div className="border-t border-stone-100 p-2 dark:border-zinc-800">
-        <button
-          type="button"
-          onClick={(e) => void quickAdd(e)}
-          className="w-full rounded-xl bg-stone-900 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
-        >
-          Add to cart
-        </button>
+        <div className="flex gap-2">
+          <CompareToggle product={p} className="min-w-0 flex-1" />
+          <button
+            type="button"
+            onClick={(e) => void quickAdd(e)}
+            className="min-w-0 flex-1 rounded-xl bg-stone-900 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
+          >
+            Add to cart
+          </button>
+        </div>
       </div>
     </div>
   );

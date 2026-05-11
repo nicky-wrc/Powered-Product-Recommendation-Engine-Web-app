@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ProductCard } from "@/components/ProductCard";
@@ -18,18 +19,28 @@ export function RecentStrip() {
 
   if (items.length === 0) return null;
 
+  const preview = items.slice(0, 4);
+
   return (
     <section className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-stone-900 dark:text-stone-50">
             Recently viewed
           </h2>
-          <p className="text-sm text-stone-600 dark:text-stone-400">Picked up from this browser session.</p>
+          <p className="text-sm text-stone-600 dark:text-stone-400">
+            สูงสุด 10 รายการในเบราว์เซอร์นี้ — อัปเดตเมื่อเปิดหน้ารายละเอียดสินค้า
+          </p>
         </div>
+        <Link
+          href="/recent"
+          className="shrink-0 text-sm font-semibold text-teal-700 hover:underline dark:text-teal-400"
+        >
+          ดูทั้งหมด ({items.length})
+        </Link>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {items.slice(0, 4).map((p, i) => (
+        {preview.map((p, i) => (
           <ProductCard key={p.id} p={p} priority={i < 2} />
         ))}
       </div>

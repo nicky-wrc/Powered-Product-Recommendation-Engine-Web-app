@@ -1,4 +1,5 @@
 import { SiteHeader } from "@/components/SiteHeader";
+import { RecentStrip } from "@/components/RecentStrip";
 import { ProductsCatalogView } from "@/components/ProductsCatalogView";
 import { fetchProductCategories, fetchProducts, parseCatalogPrice, parseCatalogSort } from "@/lib/api";
 
@@ -59,6 +60,7 @@ export default async function ProductsPage({ searchParams }: Props) {
           initialMaxPrice={initialMaxPrice}
           pageSize={PAGE_SIZE}
         />
+        <RecentStrip />
       </main>
     </div>
   );

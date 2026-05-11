@@ -3,12 +3,15 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
+import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { SiteHeader } from "@/components/SiteHeader";
+import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
 import { fetchProduct, isLocalUploadImageUrl, productImageUrl } from "@/lib/api";
+import { demoConcurrentViewers } from "@/lib/socialProof";
 import { absoluteUrl } from "@/lib/siteUrl";
 import { cache } from "react";
 
@@ -98,6 +101,7 @@ export default async function ProductDetailPage({ params }: Props) {
 
         <div className="grid gap-10 lg:grid-cols-2 lg:gap-14">
           <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-stone-200/90 bg-stone-100 shadow-xl ring-1 ring-stone-900/5 dark:border-zinc-800 dark:bg-zinc-900 dark:ring-white/5">
+            <WishlistHeart product={p} className="absolute right-4 top-4 z-10" />
             {heroImg ? (
               <Image
                 src={heroImg}
@@ -138,6 +142,31 @@ export default async function ProductDetailPage({ params }: Props) {
                 {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
               </span>
             </div>
+            <div className="flex gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                aria-hidden
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.463-2.782m-4.657-4.657a4.125 4.125 0 1 0-5.834 5.834 4.125 4.125 0 0 0 5.834-5.834Zm9.192 5.834a4.125 4.125 0 1 0-5.834-5.834 4.125 4.125 0 0 0 5.834 5.834Z"
+                  />
+                </svg>
+              </span>
+              <div>
+                <p className="text-stone-800 dark:text-stone-200">
+                  <span className="font-semibold tabular-nums text-amber-900 dark:text-amber-200">
+                    {demoConcurrentViewers(p.id)}
+                  </span>{" "}
+                  people are viewing this item right now.
+                </p>
+                <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-500">
+                  Demo activity indicator — not connected to real analytics.
+                </p>
+              </div>
+            </div>
             {p.description ? (
               <p className="leading-relaxed text-stone-600 dark:text-stone-400">{p.description}</p>
             ) : null}
@@ -154,6 +183,7 @@ export default async function ProductDetailPage({ params }: Props) {
               </div>
             ) : null}
             <ProductShareRow url={shareUrl} title={p.name} />
+            <CompareToggle product={p} className="max-w-md" />
             <ProductActions product={p} />
           </div>
         </div>

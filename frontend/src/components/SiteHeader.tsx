@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import type { User } from "@/lib/api";
 import { API_BASE, fetchCart, getToken, isLocalUploadImageUrl, PROFILE_UPDATED_EVENT, setToken } from "@/lib/api";
 import { CART_CHANGED_EVENT, cartItemCount } from "@/lib/cart";
+import { compareCount, COMPARE_CHANGED_EVENT } from "@/lib/compare";
+import { WISHLIST_CHANGED_EVENT, wishlistCount } from "@/lib/wishlist";
 
 const navClass =
   "rounded-lg px-2 py-1.5 text-sm font-medium text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-zinc-800 dark:hover:text-white";
@@ -40,6 +42,8 @@ export function SiteHeader() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [wishCount, setWishCount] = useState(0);
+  const [compareN, setCompareN] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +86,20 @@ export function SiteHeader() {
     return () => window.removeEventListener(CART_CHANGED_EVENT, syncCart);
   }, []);
 
+  useEffect(() => {
+    const sync = () => queueMicrotask(() => setWishCount(wishlistCount()));
+    sync();
+    window.addEventListener(WISHLIST_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(WISHLIST_CHANGED_EVENT, sync);
+  }, []);
+
+  useEffect(() => {
+    const sync = () => queueMicrotask(() => setCompareN(compareCount()));
+    sync();
+    window.addEventListener(COMPARE_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(COMPARE_CHANGED_EVENT, sync);
+  }, []);
+
   function logout() {
     setToken(null);
     setUser(null);
@@ -106,6 +124,22 @@ export function SiteHeader() {
           <Link href="/products" className={navClass}>
             Catalog
           </Link>
+          <Link href="/compare" className={`${navClass} inline-flex items-center gap-1`}>
+            Compare
+            {compareN > 0 ? (
+              <span className="min-w-[1.25rem] rounded-full bg-violet-600 px-1.5 py-0.5 text-center text-[10px] font-semibold text-white dark:bg-violet-500">
+                {compareN}
+              </span>
+            ) : null}
+          </Link>
+          <Link href="/wishlist" className={`${navClass} inline-flex items-center gap-1`}>
+            Wishlist
+            {wishCount > 0 ? (
+              <span className="min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-center text-[10px] font-semibold text-white dark:bg-rose-600">
+                {wishCount > 99 ? "99+" : wishCount}
+              </span>
+            ) : null}
+          </Link>
           <Link href="/cart" className={`${navClass} inline-flex items-center gap-1`}>
             Cart
             {cartCount > 0 ? (
@@ -114,6 +148,11 @@ export function SiteHeader() {
               </span>
             ) : null}
           </Link>
+          {user ? (
+            <Link href="/settings/notifications" className={navClass}>
+              Alerts
+            </Link>
+          ) : null}
           {user ? (
             <Link href="/profile" className={navClass}>
               Profile

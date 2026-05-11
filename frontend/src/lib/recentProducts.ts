@@ -1,7 +1,7 @@
 import type { Product } from "@/lib/api";
 
 const KEY = "recengine_recent_v1";
-const MAX = 8;
+const MAX = 10;
 export const RECENT_CHANGED_EVENT = "recengine-recent";
 
 function toProduct(s: Partial<Product> & Pick<Product, "id" | "name" | "price">): Product {
@@ -24,6 +24,16 @@ export function recordRecentProduct(p: Product) {
     const list: Product[] = raw ? (JSON.parse(raw) as Product[]) : [];
     const next = [toProduct(p), ...list.filter((x) => x.id !== p.id)].slice(0, MAX);
     localStorage.setItem(KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(RECENT_CHANGED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearRecentProducts() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(KEY);
     window.dispatchEvent(new Event(RECENT_CHANGED_EVENT));
   } catch {
     /* ignore */
