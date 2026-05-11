@@ -43,6 +43,32 @@ This starts:
 
 Configure the backend `DATABASE_URL` to match (see `backend/.env.example`).
 
+### Inspecting tables (PostgreSQL)
+
+After `docker compose up -d`, Postgres listens on host port **5433** (mapped from `5432` in the container). In Docker Desktop, expand the compose project row; the database service is **`recengine-db`** (image `pgvector/pgvector:pg16`). The empty “Image” column on the **project** row is normal—expand it to see each container’s image.
+
+Connection settings from `docker-compose.yml`:
+
+- Host: `127.0.0.1` (from your machine)
+- Port: `5433`
+- User / password / database: `recengine`
+
+**CLI from your PC** (requires `psql` installed):
+
+```bash
+psql postgresql://recengine:recengine@127.0.0.1:5433/recengine
+```
+
+Inside `psql`, useful commands: `\dt` (list tables), `\d products` (columns for `products`), `SELECT id, name, image_url FROM products LIMIT 10;`
+
+**CLI via Docker** (no local `psql` needed):
+
+```bash
+docker exec -it recengine-db psql -U recengine -d recengine
+```
+
+**GUI**: [pgAdmin](https://www.pgadmin.org/), [DBeaver](https://dbeaver.io/), or the database panel in VS Code/Cursor—use the same host, port, user, password, and database as above. Product images are stored in the `products.image_url` column.
+
 ## Backend setup
 
 ```bash

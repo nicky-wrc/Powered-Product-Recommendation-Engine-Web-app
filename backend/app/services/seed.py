@@ -325,7 +325,7 @@ _SAMPLE: list[dict] = [
         "price": "26.00",
         "category": "แฟชั่นและเครื่องประดับ",
         "tags": ["earrings", "gold-tone", "minimal"],
-        "image_url": _U.format(path="photo-1535632066927-ab7c95ab3141"),
+        "image_url": _U.format(path="photo-1515562141207-7a88fb7ce338"),
         "stock": 95,
     },
     {
@@ -334,7 +334,7 @@ _SAMPLE: list[dict] = [
         "price": "54.00",
         "category": "แฟชั่นและเครื่องประดับ",
         "tags": ["silk", "scarf", "print"],
-        "image_url": _U.format(path="photo-1590736969955-71cc94901144"),
+        "image_url": _U.format(path="photo-1584917865442-de89dd76afd9"),
         "stock": 42,
     },
     {
@@ -343,7 +343,7 @@ _SAMPLE: list[dict] = [
         "price": "35.00",
         "category": "แฟชั่นและเครื่องประดับ",
         "tags": ["leather", "bracelet", "unisex"],
-        "image_url": _U.format(path="photo-1611591437289-03466a99fb96"),
+        "image_url": _U.format(path="photo-1523170335258-f5e318867116"),
         "stock": 57,
     },
     {
@@ -352,7 +352,7 @@ _SAMPLE: list[dict] = [
         "price": "29.00",
         "category": "แฟชั่นและเครื่องประดับ",
         "tags": ["tote", "mini", "canvas"],
-        "image_url": _U.format(path="photo-1594221708779-94840e789748"),
+        "image_url": _U.format(path="photo-1553062407-98eeb64c6a62"),
         "stock": 61,
     },
 ]
@@ -429,14 +429,23 @@ def sync_demo_catalog_images(db: Session) -> int:
 
 
 def repair_legacy_image_urls(db: Session) -> int:
-    """Point old Unsplash hotlinks at stable Picsum URLs so Next/Image stops 404ing."""
+    """
+    Point legacy Unsplash rows at stable Picsum URLs (avoids broken hotlinks).
+
+    Skips curated demo product names: those URLs are maintained in _SAMPLE and
+    reapplied by sync_demo_catalog_images; rewriting them here previously left
+    random Picsum images that did not match product titles.
+    """
+    demo_names = [s["name"].replace("'", "''") for s in _SAMPLE]
+    in_list = ", ".join(f"'{n}'" for n in demo_names)
     result = db.execute(
         text(
-            """
+            f"""
             UPDATE products
             SET image_url = 'https://picsum.photos/seed/p-' || replace(id::text, '-', '') || '/800/600'
             WHERE image_url IS NOT NULL
               AND image_url ILIKE '%unsplash%'
+              AND name NOT IN ({in_list})
             """
         )
     )
