@@ -189,6 +189,10 @@ export default function ProfilePage() {
             <Link href="/recent" className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">
               สินค้าที่ดูล่าสุด
             </Link>
+            <span className="text-stone-400 dark:text-stone-500"> · </span>
+            <Link href="/stock-alerts" className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">
+              แจ้งเตือนสต็อก
+            </Link>
           </p>
         </div>
 

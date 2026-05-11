@@ -7,6 +7,7 @@ import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductShareRow } from "@/components/ProductShareRow";
+import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
@@ -142,6 +143,7 @@ export default async function ProductDetailPage({ params }: Props) {
                 {p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
               </span>
             </div>
+            <StockAlertCTA product={p} />
             <div className="flex gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"

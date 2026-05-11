@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import type { User } from "@/lib/api";
 import { API_BASE, fetchCart, getToken, isLocalUploadImageUrl, PROFILE_UPDATED_EVENT, setToken } from "@/lib/api";
 import { CART_CHANGED_EVENT, cartItemCount } from "@/lib/cart";
+import { dumpServerCartToLocal } from "@/lib/cartSync";
 import { compareCount, COMPARE_CHANGED_EVENT } from "@/lib/compare";
 import { WISHLIST_CHANGED_EVENT, wishlistCount } from "@/lib/wishlist";
 
@@ -100,9 +101,18 @@ export function SiteHeader() {
     return () => window.removeEventListener(COMPARE_CHANGED_EVENT, sync);
   }, []);
 
-  function logout() {
+  async function logout() {
+    const t = getToken();
+    if (t) {
+      try {
+        await dumpServerCartToLocal(t);
+      } catch {
+        /* still log out — cart may be stale until next load */
+      }
+    }
     setToken(null);
     setUser(null);
+    queueMicrotask(() => window.dispatchEvent(new Event(CART_CHANGED_EVENT)));
     router.push("/");
     router.refresh();
   }
@@ -190,7 +200,7 @@ export function SiteHeader() {
               </span>
               <button
                 type="button"
-                onClick={logout}
+                onClick={() => void logout()}
                 className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 dark:border-zinc-700 dark:text-stone-200 dark:hover:bg-zinc-900"
               >
                 Log out

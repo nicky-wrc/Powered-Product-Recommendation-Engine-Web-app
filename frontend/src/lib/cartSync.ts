@@ -1,5 +1,5 @@
-import { postCartItem } from "@/lib/api";
-import { clearCart, getCart } from "@/lib/cart";
+import { fetchCart, postCartItem } from "@/lib/api";
+import { clearCart, getCart, setCart, type CartLine } from "@/lib/cart";
 
 /** Merge guest browser cart into server cart after login/register. */
 export async function flushLocalCartToServer(token: string): Promise<void> {
@@ -9,4 +9,17 @@ export async function flushLocalCartToServer(token: string): Promise<void> {
     await postCartItem(token, line.product_id, line.qty);
   }
   clearCart();
+}
+
+/** Copy server cart into local storage before logout so the user keeps items as a guest (same browser). */
+export async function dumpServerCartToLocal(token: string): Promise<void> {
+  const c = await fetchCart(token);
+  const lines: CartLine[] = c.items.map((i) => ({
+    product_id: i.product.id,
+    name: i.product.name,
+    price: i.product.price,
+    image_url: i.product.image_url,
+    qty: Math.max(1, Math.min(99, i.quantity)),
+  }));
+  setCart(lines);
 }

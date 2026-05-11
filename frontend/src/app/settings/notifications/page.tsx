@@ -25,7 +25,7 @@ const rows: { key: keyof NotificationPrefs; label: string; hint: string }[] = [
   {
     key: "email_stock_alerts",
     label: "แจ้งเตือนเมื่อสินค้ากลับมา",
-    hint: "ใช้ร่วมกับฟีเจอร์แจ้งเตือนสต็อกในอนาคต",
+    hint: "ควบคู่กับรายการรอแจ้งบนหน้าเว็บ — เดโมยังไม่ส่งอีเมลจริง (ดูหน้าแจ้งเตือนสต็อก)",
   },
   {
     key: "email_product_recommendations",
@@ -81,6 +81,19 @@ export default function NotificationSettingsPage() {
               </span>
             </label>
           ))}
+        </div>
+
+        <div className="rounded-2xl border border-stone-200/90 bg-stone-50/80 px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">รายการแจ้งเตือนสต็อก</h2>
+          <p className="mt-1 text-xs text-stone-600 dark:text-stone-400">
+            จัดการสินค้าที่ “หมดชั่วคราว” ที่คุณกดติดตามไว้บน PDP
+          </p>
+          <Link
+            href="/stock-alerts"
+            className="mt-3 inline-flex text-sm font-semibold text-teal-700 hover:underline dark:text-teal-400"
+          >
+            ไปหน้ารายการแจ้งเตือนสต็อก →
+          </Link>
         </div>
 
         <p className="text-center text-sm">
