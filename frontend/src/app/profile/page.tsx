@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import {
+  changePassword,
   deleteProfileAvatar,
   fetchMe,
   formatNetworkError,
@@ -34,6 +35,7 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
 
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
@@ -44,8 +46,16 @@ export default function ProfilePage() {
 
   const [okMsg, setOkMsg] = useState<string | null>(null);
 
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [pwOk, setPwOk] = useState<string | null>(null);
+
   function hydrateDraftFromUser(u: User) {
     setName(u.name);
+    setEmail(u.email);
     setPhone(u.phone ?? "");
     setAddressLine1(u.address_line1 ?? "");
     setAddressLine2(u.address_line2 ?? "");
@@ -100,12 +110,18 @@ export default function ProfilePage() {
       setErr("กรุณากรอกชื่อที่แสดง");
       return;
     }
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setErr("กรุณากรอกอีเมลให้ถูกต้อง");
+      return;
+    }
     setErr(null);
     setOkMsg(null);
     setSaving(true);
     try {
       const u = await patchProfile(t, {
         name: trimmedName,
+        email: trimmedEmail,
         phone: phone.trim() || null,
         address_line1: addressLine1.trim() || null,
         address_line2: addressLine2.trim() || null,
@@ -120,7 +136,9 @@ export default function ProfilePage() {
       setOkMsg("บันทึกข้อมูลเรียบร้อยแล้ว");
       setEditing(false);
     } catch (e) {
-      setErr(formatNetworkError(e));
+      let m = formatNetworkError(e);
+      if (m === "Email already in use") m = "อีเมลนี้ถูกใช้แล้ว";
+      setErr(m);
     } finally {
       setSaving(false);
     }
@@ -129,6 +147,39 @@ export default function ProfilePage() {
   async function save(e: React.FormEvent) {
     e.preventDefault();
     await saveProfile();
+  }
+
+  async function submitPasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    const t = getToken();
+    if (!t) return;
+    setPwErr(null);
+    setPwOk(null);
+    if (pwNew.length < 6) {
+      setPwErr("รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร");
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwErr("รหัสผ่านใหม่กับยืนยันไม่ตรงกัน");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      const u = await changePassword(t, { current_password: pwCurrent, new_password: pwNew });
+      setUser(u);
+      hydrateDraftFromUser(u);
+      notifyProfileUpdated();
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      setPwOk("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว");
+    } catch (e) {
+      let m = formatNetworkError(e);
+      if (m === "Current password is incorrect") m = "รหัสผ่านปัจจุบันไม่ถูกต้อง";
+      setPwErr(m);
+    } finally {
+      setPwBusy(false);
+    }
   }
 
   async function onAvatarPick(ev: React.ChangeEvent<HTMLInputElement>) {
@@ -176,9 +227,16 @@ export default function ProfilePage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">โปรไฟล์</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            กด「แก้ไขข้อมูล」เพื่อเปลี่ยนข้อมูล — จะอัปเดตเมื่อกด「บันทึกข้อมูล」เท่านั้น (อีเมลใช้ล็อกอิน แก้ไม่ได้จากหน้านี้)
+            กด「แก้ไขข้อมูล」เพื่อเปลี่ยนชื่อ อีเมลล็อกอิน และที่อยู่ — บันทึกเมื่อกด「บันทึกข้อมูล」ส่วนรหัสผ่านเปลี่ยนได้ในฟอร์ม「ความปลอดภัย」ด้านล่าง
           </p>
           <p className="mt-3 text-sm">
+            <Link
+              href="/addresses"
+              className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+            >
+              สมุดที่อยู่
+            </Link>
+            <span className="text-stone-400 dark:text-stone-500"> · </span>
             <Link
               href="/settings/notifications"
               className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
@@ -270,6 +328,10 @@ export default function ProfilePage() {
               {!editing ? (
                 <dl className="mt-4 space-y-4 text-sm">
                   <div>
+                    <dt className="font-medium text-stone-500 dark:text-stone-400">อีเมล (ล็อกอิน)</dt>
+                    <dd className="mt-1 text-stone-900 dark:text-stone-100">{user.email}</dd>
+                  </div>
+                  <div>
                     <dt className="font-medium text-stone-500 dark:text-stone-400">ชื่อที่แสดง</dt>
                     <dd className="mt-1 text-stone-900 dark:text-stone-100">{dash(user.name)}</dd>
                   </div>
@@ -316,6 +378,16 @@ export default function ProfilePage() {
                       <option key={p} value={p} />
                     ))}
                   </datalist>
+                  <label className="block">
+                    <span className="text-sm font-medium text-stone-700 dark:text-stone-300">อีเมล (ล็อกอิน)</span>
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                  </label>
                   <label className="block">
                     <span className="text-sm font-medium text-stone-700 dark:text-stone-300">ชื่อที่แสดง</span>
                     <input
@@ -413,6 +485,52 @@ export default function ProfilePage() {
                   </div>
                 </form>
               )}
+            </div>
+
+            <div className="space-y-4 rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+              <h2 className="text-lg font-semibold text-stone-900 dark:text-stone-50">ความปลอดภัย</h2>
+              <p className="text-xs text-stone-500 dark:text-stone-400">เปลี่ยนรหัสผ่านการเข้าสู่ระบบ (ไม่กระทบการล็อกอินที่ทำอยู่ในเบราว์เซอร์นี้)</p>
+              {pwErr ? <p className="text-sm text-red-600 dark:text-red-400">{pwErr}</p> : null}
+              {pwOk ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{pwOk}</p> : null}
+              <form onSubmit={(e) => void submitPasswordChange(e)} className="space-y-4" noValidate>
+                <label className="block">
+                  <span className="text-sm font-medium text-stone-700 dark:text-stone-300">รหัสผ่านปัจจุบัน</span>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-stone-700 dark:text-stone-300">รหัสผ่านใหม่</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-medium text-stone-700 dark:text-stone-300">ยืนยันรหัสผ่านใหม่</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    className="mt-1.5 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-stone-900 shadow-sm outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={pwBusy || saving || avatarBusy}
+                  className="rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-900 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-teal-800 dark:bg-teal-950/50 dark:text-teal-100 dark:hover:bg-teal-900/40"
+                >
+                  {pwBusy ? "กำลังอัปเดต…" : "อัปเดตรหัสผ่าน"}
+                </button>
+              </form>
             </div>
           </div>
         ) : null}

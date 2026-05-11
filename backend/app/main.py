@@ -10,8 +10,17 @@ from app.config import settings
 from app.core.http_errors import register_exception_handlers
 from app.database import Base, SessionLocal, apply_runtime_schema_patches, engine
 from app.middleware.request_id import RequestIdMiddleware
-from app.models import CartItem, Interaction, Order, OrderItem, Product, Recommendation, User  # noqa: F401
-from app.routers import admin, auth, cart, events, health, orders, payments, products, recommendations
+from app.models import (
+    CartItem,
+    Interaction,
+    Order,
+    OrderItem,
+    Product,
+    Recommendation,
+    User,
+    UserAddress,
+)  # noqa: F401
+from app.routers import addresses, admin, auth, cart, events, health, orders, payments, products, recommendations
 from app.services.bootstrap_admin import ensure_bootstrap_admin
 from app.services.seed import (
     insert_missing_demo_products,
@@ -69,6 +78,7 @@ app.add_middleware(RequestIdMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api")
+app.include_router(addresses.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")

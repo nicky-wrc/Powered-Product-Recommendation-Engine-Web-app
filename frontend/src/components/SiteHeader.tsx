@@ -161,6 +161,11 @@ export function SiteHeader() {
             </Link>
           ) : null}
           {user ? (
+            <Link href="/addresses" className={navClass}>
+              Addresses
+            </Link>
+          ) : null}
+          {user ? (
             <Link href="/profile" className={navClass}>
               Profile
             </Link>

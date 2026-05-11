@@ -1,16 +1,72 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ReorderOrderButton } from "@/components/ReorderOrderButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { fetchMyOrders, getToken, syncStripeCheckoutSession, type OrderPublic } from "@/lib/api";
+import { fetchMyOrders, getToken, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
+
+const DEFAULT_QUERY: OrderHistoryFilters = { limit: 100 };
+
+function buildFilters(
+  fStatus: string,
+  fPayment: string,
+  fQ: string,
+  fFrom: string,
+  fTo: string,
+  fMin: string,
+  fMax: string,
+): OrderHistoryFilters {
+  const filters: OrderHistoryFilters = { ...DEFAULT_QUERY };
+  if (fStatus.trim()) filters.status = fStatus.trim();
+  if (fPayment.trim()) filters.payment_method = fPayment.trim();
+  if (fQ.trim()) filters.q = fQ.trim();
+  if (fFrom.trim()) filters.from_date = fFrom.trim();
+  if (fTo.trim()) filters.to_date = fTo.trim();
+  if (fMin.trim()) {
+    const v = Number.parseFloat(fMin);
+    if (!Number.isNaN(v)) filters.min_total = v;
+  }
+  if (fMax.trim()) {
+    const v = Number.parseFloat(fMax);
+    if (!Number.isNaN(v)) filters.max_total = v;
+  }
+  return filters;
+}
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<OrderPublic[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  const [fStatus, setFStatus] = useState("");
+  const [fPayment, setFPayment] = useState("");
+  const [fQ, setFQ] = useState("");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
+  const [fMin, setFMin] = useState("");
+  const [fMax, setFMax] = useState("");
+
+  const fetchWithFilters = useCallback(async (token: string, filters: OrderHistoryFilters) => {
+    if (filters.min_total != null && filters.max_total != null && filters.min_total > filters.max_total) {
+      setErr("Min total cannot be greater than max total.");
+      return;
+    }
+    setLoading(true);
+    setErr(null);
+    try {
+      const list = await fetchMyOrders(token, filters);
+      setOrders(list);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load orders");
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const t = getToken();
@@ -22,7 +78,6 @@ export default function OrdersPage() {
       return;
     }
     void (async () => {
-      queueMicrotask(() => setErr(null));
       const qs = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const sessionId = qs?.get("session_id");
       const payment = qs?.get("payment");
@@ -37,14 +92,44 @@ export default function OrdersPage() {
           );
         }
       }
-      try {
-        const o = await fetchMyOrders(t);
-        queueMicrotask(() => setOrders(o));
-      } catch (e) {
-        queueMicrotask(() => setErr(e instanceof Error ? e.message : "Failed to load orders"));
-      }
+      setSessionReady(true);
     })();
   }, []);
+
+  useEffect(() => {
+    const t = getToken();
+    if (!t || !sessionReady) return;
+    void fetchWithFilters(t, DEFAULT_QUERY);
+  }, [sessionReady, fetchWithFilters]);
+
+  function applyFilters() {
+    const t = getToken();
+    if (!t) return;
+    void fetchWithFilters(t, buildFilters(fStatus, fPayment, fQ, fFrom, fTo, fMin, fMax));
+  }
+
+  function resetFilters() {
+    setFStatus("");
+    setFPayment("");
+    setFQ("");
+    setFFrom("");
+    setFTo("");
+    setFMin("");
+    setFMax("");
+    const t = getToken();
+    if (t) void fetchWithFilters(t, DEFAULT_QUERY);
+  }
+
+  const filtersActive =
+    !!fStatus.trim() ||
+    !!fPayment.trim() ||
+    !!fQ.trim() ||
+    !!fFrom.trim() ||
+    !!fTo.trim() ||
+    !!fMin.trim() ||
+    !!fMax.trim();
+
+  const loggedIn = !!getToken();
 
   return (
     <div className="min-h-screen">
@@ -53,9 +138,100 @@ export default function OrdersPage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Orders</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            Completed orders from demo checkout or Stripe (<code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">payment_method</code> saved per order).
+            Order history with filters (status, payment, product name search, date range, total range). Demo &amp; Stripe
+            orders store <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">payment_method</code> per
+            order.
           </p>
         </div>
+
+        {loggedIn ? (
+          <div className="rounded-2xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+            <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-50">Filters</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block sm:col-span-1">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Status (exact)</span>
+                <input
+                  value={fStatus}
+                  onChange={(e) => setFStatus(e.target.value)}
+                  placeholder="e.g. completed"
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block sm:col-span-1">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Payment contains</span>
+                <input
+                  value={fPayment}
+                  onChange={(e) => setFPayment(e.target.value)}
+                  placeholder="demo, stripe…"
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Product name contains</span>
+                <input
+                  value={fQ}
+                  onChange={(e) => setFQ(e.target.value)}
+                  placeholder="Search line items"
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">From (UTC date)</span>
+                <input
+                  type="date"
+                  value={fFrom}
+                  onChange={(e) => setFFrom(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">To (UTC date)</span>
+                <input
+                  type="date"
+                  value={fTo}
+                  onChange={(e) => setFTo(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Min total ($)</span>
+                <input
+                  inputMode="decimal"
+                  value={fMin}
+                  onChange={(e) => setFMin(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">Max total ($)</span>
+                <input
+                  inputMode="decimal"
+                  value={fMax}
+                  onChange={(e) => setFMax(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={applyFilters}
+                className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-teal-600/25 hover:from-teal-500 hover:to-emerald-500 disabled:opacity-50"
+              >
+                {loading ? "Loading…" : "Apply filters"}
+              </button>
+              <button
+                type="button"
+                disabled={loading || !filtersActive}
+                onClick={resetFilters}
+                className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 hover:bg-stone-50 disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-200 dark:hover:bg-zinc-800"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {err ? (
           <p className="text-sm text-amber-800 dark:text-amber-200">
@@ -66,11 +242,11 @@ export default function OrdersPage() {
           </p>
         ) : null}
 
-        {orders === null ? <p className="text-sm text-stone-500">Loading…</p> : null}
+        {orders === null && !err && loggedIn && sessionReady ? <p className="text-sm text-stone-500">Loading…</p> : null}
 
         {orders && orders.length === 0 && !err ? (
           <p className="text-sm text-stone-600 dark:text-stone-400">
-            No orders yet.{" "}
+            {filtersActive ? "No orders match these filters." : "No orders yet."}{" "}
             <Link href="/products" className="font-semibold text-teal-700 underline dark:text-teal-400">
               Shop
             </Link>
@@ -111,7 +287,7 @@ export default function OrdersPage() {
                     <span className="font-semibold">Gift wrapping</span>
                     {o.gift_message ? (
                       <>
-                        <span className="block mt-1 text-emerald-900/90 dark:text-emerald-200/90">{o.gift_message}</span>
+                        <span className="mt-1 block text-emerald-900/90 dark:text-emerald-200/90">{o.gift_message}</span>
                       </>
                     ) : null}
                   </p>

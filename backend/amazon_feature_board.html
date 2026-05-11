@@ -62,8 +62,8 @@ function fireFeaturePrompt(featureName, sectionLabel) {
 const sections=[
 {id:"auth",label:"Auth & User",color:"#7F77DD",cards:[
 {name:"Register / Login",desc:"JWT auth, bcrypt password, refresh token",icon:"ti-user",diff:"easy",ai:false,done:true},
-{name:"User profile",desc:"แก้ชื่อ, avatar, email, เปลี่ยน password",icon:"ti-id",diff:"easy",ai:false},
-{name:"Address book",desc:"เก็บหลาย address, ตั้ง default",icon:"ti-map-pin",diff:"easy",ai:false},
+{name:"User profile",desc:"แก้ชื่อ, avatar, email, เปลี่ยน password",icon:"ti-id",diff:"easy",ai:false,done:true},
+{name:"Address book",desc:"เก็บหลาย address, ตั้ง default",icon:"ti-map-pin",diff:"easy",ai:false,done:true},
 {name:"Saved payment methods",desc:"บันทึก card ไว้ใช้ซ้ำ (tokenized)",icon:"ti-credit-card",diff:"medium",ai:false},
 {name:"Two-factor auth",desc:"OTP ผ่าน email / TOTP authenticator",icon:"ti-shield-lock",diff:"medium",ai:false},
 {name:"Notification preferences",desc:"เลือก email / push ที่อยากรับ",icon:"ti-bell",diff:"easy",ai:false,done:true},
@@ -155,7 +155,7 @@ const sections=[
 {name:"Returns & refunds",desc:"ยื่น return request, upload รูปสินค้า",icon:"ti-arrow-back-up",diff:"medium",ai:false},
 {name:"Cancellation",desc:"ยกเลิก order ก่อน ship",icon:"ti-x",diff:"easy",ai:false},
 {name:"Reorder",desc:"ซื้อซ้ำ order เดิมได้ใน 1 click",icon:"ti-refresh",diff:"easy",ai:false,done:true},
-{name:"Order history",desc:"ดู order ทั้งหมดย้อนหลัง filter ได้",icon:"ti-list-details",diff:"easy",ai:false},
+{name:"Order history",desc:"ดู order ทั้งหมดย้อนหลัง filter ได้",icon:"ti-list-details",diff:"easy",ai:false,done:true},
 {name:"Delivery scheduling",desc:"เลือกวันและเวลาจัดส่งล่วงหน้า",icon:"ti-calendar-event",diff:"medium",ai:false},
 {name:"Carrier map tracking",desc:"webhook carrier → แสดงจุด/สถานะบนแผนที่",icon:"ti-map",diff:"medium",ai:false},
 {name:"Split shipment / partial ship",desc:"ออเดอร์เดียวหลายพัสดุ สถานะแยกรายกล่อง",icon:"ti-packages",diff:"hard",ai:false},

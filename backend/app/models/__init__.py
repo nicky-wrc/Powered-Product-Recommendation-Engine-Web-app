@@ -4,5 +4,15 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.recommendation import Recommendation
 from app.models.user import User
+from app.models.user_address import UserAddress
 
-__all__ = ["User", "Product", "Interaction", "Recommendation", "Order", "OrderItem", "CartItem"]
+__all__ = [
+    "User",
+    "UserAddress",
+    "Product",
+    "Interaction",
+    "Recommendation",
+    "Order",
+    "OrderItem",
+    "CartItem",
+]

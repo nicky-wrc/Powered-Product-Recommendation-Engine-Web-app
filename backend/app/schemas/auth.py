@@ -45,6 +45,7 @@ class UserPublic(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=64)
     address_line1: str | None = Field(default=None, max_length=255)
     address_line2: str | None = Field(default=None, max_length=255)
@@ -60,6 +61,15 @@ class ProfileUpdate(BaseModel):
             return None
         if isinstance(v, str):
             return v.strip()
+        return v
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def email_strip_lower(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v.strip().lower()
         return v
 
     @field_validator(
@@ -79,6 +89,11 @@ class ProfileUpdate(BaseModel):
         if isinstance(v, str):
             return v.strip()
         return v
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class TokenResponse(BaseModel):

@@ -102,6 +102,7 @@ export function notifyProfileUpdated(): void {
 
 export type ProfileUpdatePayload = {
   name?: string;
+  email?: string;
   phone?: string | null;
   address_line1?: string | null;
   address_line2?: string | null;
@@ -134,6 +135,23 @@ export async function patchProfile(token: string, body: ProfileUpdatePayload): P
   return r.json();
 }
 
+export async function changePassword(
+  token: string,
+  body: { current_password: string; new_password: string },
+): Promise<User> {
+  const r = await fetch(`${API_BASE}/api/auth/me/password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
 export async function uploadProfileAvatar(token: string, file: File): Promise<User> {
   const fd = new FormData();
   fd.append("file", file);
@@ -153,6 +171,108 @@ export async function deleteProfileAvatar(token: string): Promise<User> {
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
   return r.json();
+}
+
+export type UserAddress = {
+  id: string;
+  user_id: string;
+  label: string | null;
+  recipient_name: string | null;
+  phone: string | null;
+  address_line1: string;
+  address_line2: string | null;
+  city: string | null;
+  province: string | null;
+  postal_code: string | null;
+  country: string | null;
+  is_default: boolean;
+  created_at: string;
+};
+
+export type UserAddressCreatePayload = {
+  label?: string | null;
+  recipient_name?: string | null;
+  phone?: string | null;
+  address_line1: string;
+  address_line2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  is_default?: boolean;
+};
+
+export type UserAddressUpdatePayload = {
+  label?: string | null;
+  recipient_name?: string | null;
+  phone?: string | null;
+  address_line1?: string;
+  address_line2?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  is_default?: boolean;
+};
+
+export async function fetchUserAddresses(token: string): Promise<UserAddress[]> {
+  const r = await fetch(`${API_BASE}/api/addresses`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function createUserAddress(token: string, body: UserAddressCreatePayload): Promise<UserAddress> {
+  const r = await fetch(`${API_BASE}/api/addresses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function updateUserAddress(
+  token: string,
+  id: string,
+  body: UserAddressUpdatePayload,
+): Promise<UserAddress> {
+  const r = await fetch(`${API_BASE}/api/addresses/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function setDefaultUserAddress(token: string, id: string): Promise<UserAddress> {
+  const r = await fetch(`${API_BASE}/api/addresses/${id}/default`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function deleteUserAddress(token: string, id: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/addresses/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
 }
 
 /** FastAPI/Pydantic validation errors (422) or string detail */
@@ -560,8 +680,32 @@ export async function syncStripeCheckoutSession(token: string, session_id: strin
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
 }
 
-export async function fetchMyOrders(token: string): Promise<OrderPublic[]> {
-  const r = await fetch(`${API_BASE}/api/orders/me`, {
+export type OrderHistoryFilters = {
+  limit?: number;
+  status?: string;
+  payment_method?: string;
+  q?: string;
+  from_date?: string;
+  to_date?: string;
+  min_total?: number;
+  max_total?: number;
+};
+
+export async function fetchMyOrders(
+  token: string,
+  filters: OrderHistoryFilters = {},
+): Promise<OrderPublic[]> {
+  const params = new URLSearchParams();
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.status?.trim()) params.set("status", filters.status.trim());
+  if (filters.payment_method?.trim()) params.set("payment_method", filters.payment_method.trim());
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.from_date?.trim()) params.set("from_date", filters.from_date.trim());
+  if (filters.to_date?.trim()) params.set("to_date", filters.to_date.trim());
+  if (filters.min_total != null && !Number.isNaN(filters.min_total)) params.set("min_total", String(filters.min_total));
+  if (filters.max_total != null && !Number.isNaN(filters.max_total)) params.set("max_total", String(filters.max_total));
+  const qs = params.toString();
+  const r = await fetch(`${API_BASE}/api/orders/me${qs ? `?${qs}` : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
