@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Props = {
   url: string;
@@ -9,8 +9,12 @@ type Props = {
 
 export function ProductShareRow({ url, title }: Props) {
   const [copied, setCopied] = useState(false);
-  const canNativeShare =
-    typeof navigator !== "undefined" && typeof navigator.share === "function";
+  /** Must stay false on first paint (SSR + hydrate) so markup matches; set in useEffect. */
+  const [canNativeShare, setCanNativeShare] = useState(false);
+
+  useEffect(() => {
+    setCanNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
+  }, []);
 
   async function copyLink() {
     try {
