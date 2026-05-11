@@ -32,6 +32,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  /** บังคับให้ <Image> โหลดใหม่หลังอัปโหลดรูป (path เดิมถูก cache) */
+  const [avatarRenderNonce, setAvatarRenderNonce] = useState(0);
+  const [avatarErr, setAvatarErr] = useState<string | null>(null);
+  const [avatarOk, setAvatarOk] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
   const [name, setName] = useState("");
@@ -90,6 +94,8 @@ export default function ProfilePage() {
     if (!user) return;
     setErr(null);
     setOkMsg(null);
+    setAvatarErr(null);
+    setAvatarOk(null);
     hydrateDraftFromUser(user);
     setEditing(true);
   }
@@ -98,6 +104,8 @@ export default function ProfilePage() {
     if (!user) return;
     setErr(null);
     setOkMsg(null);
+    setAvatarErr(null);
+    setAvatarOk(null);
     hydrateDraftFromUser(user);
     setEditing(false);
   }
@@ -117,6 +125,8 @@ export default function ProfilePage() {
     }
     setErr(null);
     setOkMsg(null);
+    setAvatarErr(null);
+    setAvatarOk(null);
     setSaving(true);
     try {
       const u = await patchProfile(t, {
@@ -186,15 +196,19 @@ export default function ProfilePage() {
     const file = ev.target.files?.[0];
     const t = getToken();
     if (!file || !t) return;
+    setAvatarErr(null);
+    setAvatarOk(null);
     setErr(null);
+    setOkMsg(null);
     setAvatarBusy(true);
     try {
       const u = await uploadProfileAvatar(t, file);
       setUser(u);
+      setAvatarRenderNonce((n) => n + 1);
       notifyProfileUpdated();
-      setOkMsg("อัปเดตรูปโปรไฟล์แล้ว");
+      setAvatarOk("อัปเดตรูปโปรไฟล์แล้ว");
     } catch (e) {
-      setErr(formatNetworkError(e));
+      setAvatarErr(formatNetworkError(e));
     } finally {
       setAvatarBusy(false);
       ev.target.value = "";
@@ -204,15 +218,19 @@ export default function ProfilePage() {
   async function removeAvatar() {
     const t = getToken();
     if (!t) return;
+    setAvatarErr(null);
+    setAvatarOk(null);
     setErr(null);
+    setOkMsg(null);
     setAvatarBusy(true);
     try {
       const u = await deleteProfileAvatar(t);
       setUser(u);
+      setAvatarRenderNonce((n) => n + 1);
       notifyProfileUpdated();
-      setOkMsg("ลบรูปโปรไฟล์แล้ว");
+      setAvatarOk("ลบรูปโปรไฟล์แล้ว");
     } catch (e) {
-      setErr(formatNetworkError(e));
+      setAvatarErr(formatNetworkError(e));
     } finally {
       setAvatarBusy(false);
     }
@@ -261,12 +279,15 @@ export default function ProfilePage() {
             <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
               <h2 className="text-lg font-semibold text-stone-900 dark:text-stone-50">รูปโปรไฟล์</h2>
               <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-                {editing ? "JPG / PNG / WebP ฯลฯ สูงสุด 5MB" : "เปลี่ยนรูปได้เมื่ออยู่ในโหมดแก้ไข"}
+                JPG / PNG / WebP / GIF / AVIF / BMP / SVG / HEIC ฯลฯ สูงสุด 5MB — เลือกไฟล์แล้วอัปโหลดทันที ไม่ต้องกด「บันทึกข้อมูล」
               </p>
+              {avatarErr ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{avatarErr}</p> : null}
+              {avatarOk ? <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{avatarOk}</p> : null}
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-stone-200 bg-stone-100 dark:border-zinc-700 dark:bg-zinc-800">
                   {avatarSrc ? (
                     <Image
+                      key={`${user.avatar_url ?? ""}-${avatarRenderNonce}`}
                       src={avatarSrc}
                       alt=""
                       fill
@@ -280,30 +301,28 @@ export default function ProfilePage() {
                     </span>
                   )}
                 </div>
-                {editing ? (
-                  <div className="flex flex-col gap-2">
-                    <label className="cursor-pointer rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 transition hover:bg-stone-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:bg-zinc-800">
-                      {avatarBusy ? "กำลังอัปโหลด…" : "เลือกรูป"}
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                        className="sr-only"
-                        disabled={avatarBusy}
-                        onChange={(ev) => void onAvatarPick(ev)}
-                      />
-                    </label>
-                    {user.avatar_url ? (
-                      <button
-                        type="button"
-                        disabled={avatarBusy}
-                        onClick={() => void removeAvatar()}
-                        className="text-left text-sm text-red-600 underline disabled:opacity-50 dark:text-red-400"
-                      >
-                        ลบรูป
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
+                <div className="flex flex-col gap-2">
+                  <label className="cursor-pointer rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 transition hover:bg-stone-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100 dark:hover:bg-zinc-800">
+                    {avatarBusy ? "กำลังอัปโหลด…" : "เลือกรูป"}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.svg,.ico,.heic,.heif"
+                      className="sr-only"
+                      disabled={avatarBusy}
+                      onChange={(ev) => void onAvatarPick(ev)}
+                    />
+                  </label>
+                  {user.avatar_url ? (
+                    <button
+                      type="button"
+                      disabled={avatarBusy}
+                      onClick={() => void removeAvatar()}
+                      className="text-left text-sm text-red-600 underline disabled:opacity-50 dark:text-red-400"
+                    >
+                      ลบรูป
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
 

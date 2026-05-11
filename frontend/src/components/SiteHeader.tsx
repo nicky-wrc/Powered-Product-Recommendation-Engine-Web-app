@@ -39,6 +39,8 @@ function BrandMark() {
 export function SiteHeader() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  /** รีเมาต์ next/image เมื่อโปรไฟล์เปลี่ยน (รูปที่ path เดิมอาจถูก cache) */
+  const [headerAvatarNonce, setHeaderAvatarNonce] = useState(0);
   const [cartCount, setCartCount] = useState(0);
   const [wishCount, setWishCount] = useState(0);
   const [compareN, setCompareN] = useState(0);
@@ -61,10 +63,14 @@ export function SiteHeader() {
         });
     };
     loadUser();
-    window.addEventListener(PROFILE_UPDATED_EVENT, loadUser);
+    const onProfileUpdated = () => {
+      setHeaderAvatarNonce((n) => n + 1);
+      loadUser();
+    };
+    window.addEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
     return () => {
       cancelled = true;
-      window.removeEventListener(PROFILE_UPDATED_EVENT, loadUser);
+      window.removeEventListener(PROFILE_UPDATED_EVENT, onProfileUpdated);
     };
   }, []);
 
@@ -185,6 +191,7 @@ export function SiteHeader() {
               {user.avatar_url ? (
                 <span className="relative hidden h-8 w-8 shrink-0 overflow-hidden rounded-full border border-stone-200 dark:border-zinc-600 sm:block">
                   <Image
+                    key={`${user.avatar_url}-${headerAvatarNonce}`}
                     src={user.avatar_url}
                     alt=""
                     fill
