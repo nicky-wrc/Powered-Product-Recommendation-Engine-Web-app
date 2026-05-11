@@ -1,14 +1,20 @@
 import os
+import mimetypes
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
+from app.core.http_errors import register_exception_handlers
 from app.database import Base, SessionLocal, engine
+from app.middleware.request_id import RequestIdMiddleware
 from app.models import CartItem, Interaction, Order, OrderItem, Product, Recommendation, User  # noqa: F401
-from app.routers import admin, auth, cart, events, orders, products, recommendations
+from app.routers import admin, auth, cart, events, health, orders, products, recommendations
+from app.services.bootstrap_admin import ensure_bootstrap_admin
 from app.services.seed import repair_legacy_image_urls, seed_products_if_empty
+from app.upload_paths import PRODUCT_IMAGES_DIR, UPLOADS_ROOT
 
 
 @asynccontextmanager
@@ -19,12 +25,20 @@ async def lifespan(_app: FastAPI):
         try:
             seed_products_if_empty(db)
             repair_legacy_image_urls(db)
+            ensure_bootstrap_admin(db)
         finally:
             db.close()
     yield
 
 
-app = FastAPI(title="Recommendation Engine API", version="0.1.0", lifespan=lifespan)
+# Help Windows / minimal DBs serve correct Content-Type for modern formats.
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("image/avif", ".avif")
+mimetypes.add_type("image/svg+xml", ".svg")
+PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI(title="Recommendation Engine API", version=settings.app_version, lifespan=lifespan)
+register_exception_handlers(app)
 
 _origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 # When cors_allow_lan_regex is true: allow loopback on any port (incl. IPv6 [::1], common on Windows)
@@ -42,7 +56,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestIdMiddleware)
 
+app.include_router(health.router)
 app.include_router(auth.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
@@ -52,6 +68,4 @@ app.include_router(recommendations.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_ROOT)), name="uploads")

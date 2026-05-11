@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    app_version: str = "0.2.0"
     database_url: str = "postgresql+psycopg://recengine:recengine@localhost:5432/recengine"
     secret_key: str = "change-me-in-production"
     algorithm: str = "HS256"
@@ -12,6 +13,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     # When true (default), allow dev Origins: localhost/127.0.0.1/[::1] (any port) + 192.168.* / 10.* LAN.
     cors_allow_lan_regex: bool = True
+    # Optional: auto-create or promote admin on startup (local/demo — avoid real secrets in production).
+    bootstrap_admin_email: str | None = None
+    bootstrap_admin_password: str | None = None
+    bootstrap_admin_name: str | None = None
+    # Optional: redis://localhost:6379/0 — enables short TTL cache for /recommendations/popular and /me
+    redis_url: str | None = None
 
 
 settings = Settings()

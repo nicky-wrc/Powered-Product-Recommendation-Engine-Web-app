@@ -28,29 +28,29 @@ export default function OrdersPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+    <div className="min-h-screen">
       <SiteHeader />
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-10">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Orders</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">Placed orders (demo checkout).</p>
+        <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
+          <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Orders</h1>
+          <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">Your completed demo checkouts.</p>
         </div>
 
         {err ? (
           <p className="text-sm text-amber-800 dark:text-amber-200">
             {err}{" "}
-            <Link href="/login?next=/orders" className="font-medium underline">
+            <Link href="/login?next=/orders" className="font-semibold text-teal-700 underline dark:text-teal-400">
               Log in
             </Link>
           </p>
         ) : null}
 
-        {orders === null ? <p className="text-sm text-zinc-500">Loading…</p> : null}
+        {orders === null ? <p className="text-sm text-stone-500">Loading…</p> : null}
 
         {orders && orders.length === 0 && !err ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-stone-600 dark:text-stone-400">
             No orders yet.{" "}
-            <Link href="/products" className="underline">
+            <Link href="/products" className="font-semibold text-teal-700 underline dark:text-teal-400">
               Shop
             </Link>
           </p>
@@ -61,17 +61,18 @@ export default function OrdersPage() {
             {orders.map((o) => (
               <li
                 key={o.id}
-                className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+                className="rounded-2xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="text-sm text-zinc-500">
-                    {new Date(o.created_at).toLocaleString()} · {o.status}
+                  <p className="text-sm text-stone-500 dark:text-stone-400">
+                    {new Date(o.created_at).toLocaleString()} ·{" "}
+                    <span className="font-medium text-teal-700 dark:text-teal-400">{o.status}</span>
                   </p>
-                  <p className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                  <p className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-50">
                     ${o.total_amount.toFixed(2)}
                   </p>
                 </div>
-                <ul className="mt-3 space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+                <ul className="mt-4 space-y-1.5 text-sm text-stone-700 dark:text-stone-300">
                   {o.items.map((it) => (
                     <li key={`${o.id}-${it.product_id}`}>
                       {it.product_name} × {it.quantity} @ ${it.unit_price.toFixed(2)}

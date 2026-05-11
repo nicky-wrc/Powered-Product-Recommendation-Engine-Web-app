@@ -14,6 +14,7 @@ import {
   getToken,
   patchCartItem,
   postOrder,
+  isLocalUploadImageUrl,
   productImageUrl,
 } from "@/lib/api";
 import { CART_CHANGED_EVENT, cartSubtotal, clearCart, getCart, removeLine, updateLineQty } from "@/lib/cart";
@@ -120,28 +121,27 @@ export default function CartPage() {
   const subtotal = cartSubtotal(lines);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black">
+    <div className="min-h-screen">
       <SiteHeader />
       <main className="mx-auto max-w-3xl space-y-8 px-4 py-10">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Cart</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Signed-in users: cart lives in the database. Checkout creates an <strong>order</strong>, decreases stock, and
-            records purchase signals. Guests: items stay in this browser until you log in (then they merge to your
-            server cart).
+        <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
+          <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Cart</h1>
+          <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
+            Signed-in users: cart syncs to the server. Checkout creates an <strong>order</strong>, updates stock, and
+            records purchase signals. Guests: browser storage until you log in (then merged to the server).
           </p>
         </div>
 
         {lines.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="text-sm text-stone-600 dark:text-stone-400">
             Your cart is empty.{" "}
-            <Link href="/products" className="font-medium text-zinc-900 underline dark:text-zinc-100">
+            <Link href="/products" className="font-semibold text-teal-700 underline dark:text-teal-400">
               Browse catalog
             </Link>
           </p>
         ) : (
           <>
-            <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-950">
+            <ul className="divide-y divide-stone-200 overflow-hidden rounded-3xl border border-stone-200/90 bg-white/90 shadow-sm dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-950/90">
               {lines.map((line) => {
                 const displaySrc = productImageUrl({
                   id: line.product_id,
@@ -160,7 +160,14 @@ export default function CartPage() {
                       className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"
                     >
                       {displaySrc ? (
-                        <Image src={displaySrc} alt="" fill className="object-cover" sizes="96px" />
+                        <Image
+                          src={displaySrc}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="96px"
+                          unoptimized={isLocalUploadImageUrl(line.image_url)}
+                        />
                       ) : (
                         <span className="flex h-full items-center justify-center text-xs text-zinc-400">No image</span>
                       )}
@@ -212,8 +219,8 @@ export default function CartPage() {
               })}
             </ul>
 
-            <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <div className="flex flex-col gap-4 rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xl font-bold tabular-nums text-stone-900 dark:text-stone-50">
                 Subtotal · ${subtotal.toFixed(2)}
               </p>
               <div className="flex flex-col gap-2 sm:items-end">
@@ -222,12 +229,13 @@ export default function CartPage() {
                   type="button"
                   disabled={busy}
                   onClick={() => void checkout()}
-                  className="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-60"
+                  className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-600/25 transition hover:from-teal-500 hover:to-emerald-500 disabled:opacity-60"
                 >
                   {busy ? "Placing order…" : "Place order (demo)"}
                 </button>
-                <p className="text-xs text-zinc-500">
-                  Requires login. API <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-900">{API_BASE}</code>
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  Requires login ·{" "}
+                  <code className="rounded bg-stone-100 px-1 dark:bg-zinc-900">{API_BASE}</code>
                 </p>
               </div>
             </div>

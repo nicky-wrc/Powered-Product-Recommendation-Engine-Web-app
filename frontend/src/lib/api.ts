@@ -41,12 +41,20 @@ export type Product = {
   stock: number;
 };
 
+/** True for images stored under our static mount (use with next/image unoptimized in dev/proxy setups). */
+export function isLocalUploadImageUrl(url: string | null | undefined): boolean {
+  return !!url && url.startsWith("/uploads/");
+}
+
 /** Stable Picsum URL for dead Unsplash hotlinks (aligned with backend repair_legacy_image_urls). */
 export function productImageUrl(product: Product): string | null {
   const u = product.image_url;
   if (!u) return null;
   if (/unsplash\.com/i.test(u)) {
     return `https://picsum.photos/seed/p-${product.id.replace(/-/g, "")}/800/600`;
+  }
+  if (u.startsWith("/uploads/")) {
+    return u;
   }
   return u;
 }
@@ -142,17 +150,28 @@ export async function fetchPersonalized(
   return r.json();
 }
 
+export async function fetchProductCategories(): Promise<string[]> {
+  const r = await fetch(`${API_BASE}/api/products/categories`, {
+    next: { revalidate: 30 },
+  });
+  if (!r.ok) throw new Error("Failed to load categories");
+  return r.json();
+}
+
 export async function fetchProducts(params: {
   page?: number;
   limit?: number;
   category?: string;
   search?: string;
+  /** Only products with null or empty category */
+  uncategorized?: boolean;
 }): Promise<{ products: Product[]; total: number; page: number; total_pages: number }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set("page", String(params.page));
   if (params.limit) sp.set("limit", String(params.limit));
   if (params.category) sp.set("category", params.category);
   if (params.search) sp.set("search", params.search);
+  if (params.uncategorized) sp.set("uncategorized", "true");
   const r = await fetch(`${API_BASE}/api/products?${sp.toString()}`, {
     next: { revalidate: 15 },
   });
@@ -162,11 +181,20 @@ export async function fetchProducts(params: {
 
 export async function fetchProduct(
   id: string,
-): Promise<{ product: Product; similar_products: Product[] } | null> {
+): Promise<{ product: Product; similar_products: Product[]; bought_together: Product[] } | null> {
   const r = await fetch(`${API_BASE}/api/products/${id}`, { next: { revalidate: 15 } });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error("Failed to load product");
-  return r.json();
+  const data = (await r.json()) as {
+    product: Product;
+    similar_products: Product[];
+    bought_together?: Product[];
+  };
+  return {
+    product: data.product,
+    similar_products: data.similar_products,
+    bought_together: data.bought_together ?? [],
+  };
 }
 
 export type AdminAnalytics = {
@@ -181,6 +209,18 @@ export type AdminAnalytics = {
   note: string;
 };
 
+export type Readiness = {
+  status: string;
+  version: string;
+  checks: { database: string; redis: string };
+};
+
+export async function fetchReadiness(): Promise<Readiness> {
+  const r = await fetch(`${API_BASE}/health/ready`, { cache: "no-store" });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
 export async function fetchAdminAnalytics(token: string): Promise<AdminAnalytics> {
   const r = await fetch(`${API_BASE}/api/admin/analytics`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -191,6 +231,69 @@ export async function fetchAdminAnalytics(token: string): Promise<AdminAnalytics
     throw new Error(t || "Failed to load analytics");
   }
   return r.json();
+}
+
+export type AdminProductCreate = {
+  name: string;
+  description?: string | null;
+  price: number;
+  category?: string | null;
+  tags?: string[] | null;
+  image_url?: string | null;
+  stock?: number;
+};
+
+export type AdminProductUpdate = Partial<AdminProductCreate>;
+
+export async function adminUploadProductImage(token: string, file: File): Promise<{ url: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${API_BASE}/api/admin/upload/product-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminCreateProduct(token: string, body: AdminProductCreate): Promise<Product> {
+  const r = await fetch(`${API_BASE}/api/admin/products`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ ...body, stock: body.stock ?? 0 }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminUpdateProduct(
+  token: string,
+  productId: string,
+  body: AdminProductUpdate,
+): Promise<Product> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminDeleteProduct(token: string, productId: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (r.status === 204) return;
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
 }
 
 export async function postEvent(

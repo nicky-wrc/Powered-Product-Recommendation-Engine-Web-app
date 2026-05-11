@@ -33,6 +33,6 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Logs / ML (later)
-mlruns/
-*.log
+# Uploads (local dev)
+backend/uploads/
+

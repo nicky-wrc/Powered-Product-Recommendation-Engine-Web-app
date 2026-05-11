@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.schemas.products import ProductPublic, product_public
 from app.schemas.recommendations import RecommendationFeed, RecommendationMeta
+from app.services.redis_cache import cache_get_json, cache_set_json
 from app.services.recommendation_engine import (
     collaborative_product_scores,
     content_product_scores,
@@ -73,20 +74,16 @@ def _fill_from_popular(
     return out[:limit], fallback
 
 
-@router.get("/popular", response_model=list[ProductPublic])
-def popular(
-    limit: int = Query(12, ge=1, le=50),
-    db: Session = Depends(get_db),
-) -> list[ProductPublic]:
-    return [product_public(p) for p in _popular_products(db, limit)]
+_POPULAR_CACHE_TTL = 60
+_ME_CACHE_TTL = 120
 
 
-@router.get("/me", response_model=RecommendationFeed)
-def for_me(
-    limit: int = Query(12, ge=1, le=50),
-    mode: Literal["popular", "collaborative", "content", "hybrid"] = Query("hybrid"),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+def _feed_for_user(
+    db: Session,
+    user: User,
+    *,
+    limit: int,
+    mode: Literal["popular", "collaborative", "content", "hybrid"],
 ) -> RecommendationFeed:
     exclude = _exclude_for_user(db, user.id)
     used_collaborative = False
@@ -156,3 +153,33 @@ def for_me(
             fallback_popular=fallback_popular,
         ),
     )
+
+
+@router.get("/popular", response_model=list[ProductPublic])
+def popular(
+    limit: int = Query(12, ge=1, le=50),
+    db: Session = Depends(get_db),
+) -> list[ProductPublic]:
+    key = f"rec:popular:v1:{limit}"
+    cached = cache_get_json(key)
+    if cached is not None:
+        return [ProductPublic.model_validate(x) for x in cached]
+    payload = [product_public(p).model_dump(mode="json") for p in _popular_products(db, limit)]
+    cache_set_json(key, payload, _POPULAR_CACHE_TTL)
+    return [ProductPublic.model_validate(x) for x in payload]
+
+
+@router.get("/me", response_model=RecommendationFeed)
+def for_me(
+    limit: int = Query(12, ge=1, le=50),
+    mode: Literal["popular", "collaborative", "content", "hybrid"] = Query("hybrid"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RecommendationFeed:
+    key = f"rec:me:v1:{user.id}:{mode}:{limit}"
+    cached = cache_get_json(key)
+    if cached is not None:
+        return RecommendationFeed.model_validate(cached)
+    feed = _feed_for_user(db, user, limit=limit, mode=mode)
+    cache_set_json(key, feed.model_dump(mode="json"), _ME_CACHE_TTL)
+    return feed

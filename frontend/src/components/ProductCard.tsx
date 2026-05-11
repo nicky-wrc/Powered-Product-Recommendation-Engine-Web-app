@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { getToken, postEvent, productImageUrl, type Product } from "@/lib/api";
+import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
 
 type Props = { p: Product; priority?: boolean };
@@ -26,9 +26,9 @@ export function ProductCard({ p, priority = false }: Props) {
   }
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition hover:border-zinc-300 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-zinc-700">
+    <div className="group/card flex flex-col overflow-hidden rounded-2xl border border-stone-200/90 bg-white shadow-sm ring-1 ring-stone-900/5 transition duration-300 hover:-translate-y-0.5 hover:border-teal-200/80 hover:shadow-lg hover:shadow-teal-900/5 dark:border-zinc-800 dark:bg-zinc-950 dark:ring-white/5 dark:hover:border-teal-800/60 dark:hover:shadow-teal-900/20">
       <Link href={`/products/${p.id}`} className="flex min-h-0 flex-1 flex-col">
-        <div className="relative aspect-[4/3] w-full bg-zinc-100 dark:bg-zinc-900">
+        <div className="relative aspect-[4/3] w-full overflow-hidden bg-stone-100 dark:bg-zinc-900">
           {img ? (
             <Image
               src={img}
@@ -36,28 +36,33 @@ export function ProductCard({ p, priority = false }: Props) {
               fill
               priority={priority}
               loading={priority ? "eager" : "lazy"}
-              className="object-cover transition group-hover:opacity-95"
+              unoptimized={isLocalUploadImageUrl(p.image_url)}
+              className="object-cover transition duration-500 group-hover/card:scale-[1.03]"
               sizes="(max-width: 768px) 100vw, 280px"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-zinc-400">No image</div>
+            <div className="flex h-full items-center justify-center text-sm text-stone-400">No image</div>
           )}
+          {p.category ? (
+            <span className="absolute left-2 top-2 rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-stone-600 shadow-sm backdrop-blur-sm dark:bg-zinc-950/90 dark:text-stone-300">
+              {p.category}
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-1 p-4">
-          <p className="line-clamp-2 text-sm font-medium text-zinc-900 dark:text-zinc-50">{p.name}</p>
-          {p.category ? (
-            <p className="text-xs uppercase tracking-wide text-zinc-500">{p.category}</p>
-          ) : null}
-          <p className="mt-auto pt-2 text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-stone-900 dark:text-stone-50">
+            {p.name}
+          </p>
+          <p className="mt-auto pt-2 text-lg font-bold tabular-nums text-teal-700 dark:text-teal-400">
             ${p.price.toFixed(2)}
           </p>
         </div>
       </Link>
-      <div className="border-t border-zinc-100 p-2 dark:border-zinc-800">
+      <div className="border-t border-stone-100 p-2 dark:border-zinc-800">
         <button
           type="button"
           onClick={(e) => void quickAdd(e)}
-          className="w-full rounded-lg bg-zinc-100 py-2 text-xs font-medium text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+          className="w-full rounded-xl bg-stone-900 py-2.5 text-xs font-semibold text-white transition hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
         >
           Add to cart
         </button>

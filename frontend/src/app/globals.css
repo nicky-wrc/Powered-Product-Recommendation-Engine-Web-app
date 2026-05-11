@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --accent: #0d9488;
+  --accent-muted: rgba(13, 148, 136, 0.12);
 }
 
 @theme inline {
@@ -14,13 +16,30 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0c0a09;
+    --foreground: #fafaf9;
+    --accent: #2dd4bf;
+    --accent-muted: rgba(45, 212, 191, 0.12);
   }
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Subtle grain + mesh (very light) */
+.app-mesh {
+  background-image:
+    radial-gradient(ellipse 100% 80% at 0% -20%, var(--accent-muted), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(120, 113, 108, 0.08), transparent 45%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-mesh {
+    background-image:
+      radial-gradient(ellipse 100% 80% at 0% -20%, var(--accent-muted), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 0%, rgba(68, 64, 60, 0.35), transparent 45%);
+  }
 }

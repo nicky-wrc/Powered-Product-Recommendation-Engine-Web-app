@@ -5,7 +5,12 @@ const apiProxyTarget = (process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000")
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    return [{ source: "/api/:path*", destination: `${apiProxyTarget}/api/:path*` }];
+    return [
+      { source: "/api/:path*", destination: `${apiProxyTarget}/api/:path*` },
+      { source: "/uploads/:path*", destination: `${apiProxyTarget}/uploads/:path*` },
+      { source: "/health/ready", destination: `${apiProxyTarget}/health/ready` },
+      { source: "/health", destination: `${apiProxyTarget}/health` },
+    ];
   },
   images: {
     remotePatterns: [
@@ -24,6 +29,9 @@ const nextConfig: NextConfig = {
         hostname: "fastly.picsum.photos",
         pathname: "/**",
       },
+      { protocol: "http", hostname: "localhost", pathname: "/uploads/**" },
+      { protocol: "http", hostname: "127.0.0.1", pathname: "/uploads/**" },
+      { protocol: "http", hostname: "127.0.0.1", port: "8000", pathname: "/uploads/**" },
     ],
   },
 };
