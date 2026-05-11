@@ -25,6 +25,12 @@ class Product(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
+    images: Mapped[list["ProductImage"]] = relationship(
+        "ProductImage",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
+
     interactions: Mapped[list["Interaction"]] = relationship("Interaction", back_populates="product")
     recommendations: Mapped[list["Recommendation"]] = relationship("Recommendation", back_populates="product")
     cart_entries: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product")

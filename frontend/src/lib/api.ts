@@ -38,6 +38,8 @@ export type Product = {
   category: string | null;
   tags: string[] | null;
   image_url: string | null;
+  /** Ordered gallery for PDP; list APIs may repeat [image_url] for compatibility. */
+  image_urls?: string[];
   stock: number;
 };
 
@@ -46,17 +48,28 @@ export function isLocalUploadImageUrl(url: string | null | undefined): boolean {
   return !!url && url.startsWith("/uploads/");
 }
 
-/** Stable Picsum URL for dead Unsplash hotlinks (aligned with backend repair_legacy_image_urls). */
-export function productImageUrl(product: Product): string | null {
-  const u = product.image_url;
+function resolveRawProductImageUrl(productId: string, u: string | null | undefined): string | null {
   if (!u) return null;
   if (/unsplash\.com/i.test(u)) {
-    return `https://picsum.photos/seed/p-${product.id.replace(/-/g, "")}/800/600`;
+    return `https://picsum.photos/seed/p-${productId.replace(/-/g, "")}/800/600`;
   }
   if (u.startsWith("/uploads/")) {
     return u;
   }
   return u;
+}
+
+/** Stable Picsum URL for dead Unsplash hotlinks (aligned with backend repair_legacy_image_urls). */
+export function productImageUrl(product: Product): string | null {
+  const raw = product.image_urls?.length ? product.image_urls[0] : product.image_url;
+  return resolveRawProductImageUrl(product.id, raw);
+}
+
+/** All gallery images resolved for carousels / structured data. */
+export function productGalleryUrls(product: Product): string[] {
+  const raw =
+    product.image_urls?.length ? product.image_urls : product.image_url ? [product.image_url] : [];
+  return raw.map((u) => resolveRawProductImageUrl(product.id, u)).filter((x): x is string => x != null && x !== "");
 }
 
 export type User = {
@@ -527,6 +540,69 @@ export async function adminDeleteProduct(token: string, productId: string): Prom
   });
   if (r.status === 204) return;
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
+}
+
+export type ProductGalleryRow = { id: string; image_url: string; sort_order: number };
+
+export type AdminProductDetail = { product: Product; images: ProductGalleryRow[] };
+
+export async function adminGetProductDetail(token: string, productId: string): Promise<AdminProductDetail> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/detail`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminAddProductGalleryImage(
+  token: string,
+  productId: string,
+  imageUrl: string,
+): Promise<AdminProductDetail> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/images`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ image_url: imageUrl }),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminDeleteProductGalleryImage(
+  token: string,
+  productId: string,
+  imageId: string,
+): Promise<AdminProductDetail> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/images/${imageId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminReorderProductGallery(
+  token: string,
+  productId: string,
+  imageIds: string[],
+): Promise<AdminProductDetail> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/images/order`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ image_ids: imageIds }),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
 }
 
 export async function postEvent(

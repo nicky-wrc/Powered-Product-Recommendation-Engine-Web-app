@@ -16,12 +16,14 @@ from app.models import (
     Order,
     OrderItem,
     Product,
+    ProductImage,
     Recommendation,
     User,
     UserAddress,
 )  # noqa: F401
 from app.routers import addresses, admin, auth, cart, events, health, orders, payments, products, recommendations
 from app.services.bootstrap_admin import ensure_bootstrap_admin
+from app.services.product_gallery import backfill_product_galleries_from_legacy_image_url
 from app.services.seed import (
     insert_missing_demo_products,
     repair_legacy_image_urls,
@@ -42,6 +44,7 @@ async def lifespan(_app: FastAPI):
             insert_missing_demo_products(db)
             repair_legacy_image_urls(db)
             sync_demo_catalog_images(db)
+            backfill_product_galleries_from_legacy_image_url(db)
             ensure_bootstrap_admin(db)
         finally:
             db.close()

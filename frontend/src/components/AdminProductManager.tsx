@@ -5,8 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TagInput } from "@/components/TagInput";
 import {
+  adminAddProductGalleryImage,
   adminCreateProduct,
   adminDeleteProduct,
+  adminDeleteProductGalleryImage,
+  adminGetProductDetail,
+  adminReorderProductGallery,
   adminUpdateProduct,
   adminUploadProductImage,
   API_BASE,
@@ -15,6 +19,7 @@ import {
   isLocalUploadImageUrl,
   productImageUrl,
   type Product,
+  type ProductGalleryRow,
 } from "@/lib/api";
 import Image from "next/image";
 
@@ -74,9 +79,16 @@ const INV_FILTER_UNCATEGORIZED = "__uncategorized__" as const;
 
 const INVENTORY_PAGE_SIZE = 25;
 
+type CreatePendingImage = { key: string; url: string };
+
+function newCreateImageKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
 export function AdminProductManager({ token }: Props) {
   const createFileRef = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
+  const editDetailForIdRef = useRef<string | null>(null);
   const [uploading, setUploading] = useState<"create" | "edit" | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -89,7 +101,13 @@ export function AdminProductManager({ token }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [createForm, setCreateForm] = useState(emptyDraft);
+  /** รูปที่จะผูกกับสินค้าใหม่ (เรียงลำดับ = แกลเลอรี่; รูปแรก = ปก) — ก่อนกดสร้างสินค้า */
+  const [createGallery, setCreateGallery] = useState<CreatePendingImage[]>([]);
+  const [createUrlDraft, setCreateUrlDraft] = useState("");
   const [form, setForm] = useState(emptyDraft);
+  const [editGallery, setEditGallery] = useState<ProductGalleryRow[]>([]);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [galleryBusy, setGalleryBusy] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   /** Inventory list filter: null = all; INV_FILTER_UNCATEGORIZED = empty category; else category name */
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string | null>(null);
@@ -143,8 +161,23 @@ export function AdminProductManager({ token }: Props) {
     return () => clearTimeout(id);
   }, [fetchList]);
 
+  function applyAdminDetailToEditForm(detail: { product: Product; images: ProductGalleryRow[] }) {
+    const prod = detail.product;
+    setForm({
+      name: prod.name,
+      description: prod.description ?? "",
+      price: String(prod.price),
+      category: prod.category ?? "",
+      tags: [...(prod.tags ?? [])],
+      image_url: prod.image_url ?? "",
+      stock: String(prod.stock),
+    });
+    setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
+  }
+
   function startEdit(p: Product) {
     setEditingId(p.id);
+    editDetailForIdRef.current = p.id;
     setForm({
       name: p.name,
       description: p.description ?? "",
@@ -154,13 +187,31 @@ export function AdminProductManager({ token }: Props) {
       image_url: p.image_url ?? "",
       stock: String(p.stock),
     });
+    setEditGallery([]);
+    setGalleryLoading(true);
     setMsg(null);
     setErr(null);
+    const id = p.id;
+    void (async () => {
+      try {
+        const detail = await adminGetProductDetail(token, id);
+        if (editDetailForIdRef.current !== id) return;
+        applyAdminDetailToEditForm(detail);
+      } catch (e) {
+        if (editDetailForIdRef.current !== id) return;
+        setErr(e instanceof Error ? e.message : "โหลดรายละเอียดแกลเลอรี่ไม่สำเร็จ");
+      } finally {
+        if (editDetailForIdRef.current === id) setGalleryLoading(false);
+      }
+    })();
   }
 
   function cancelEdit() {
+    editDetailForIdRef.current = null;
     setEditingId(null);
     setForm(emptyDraft);
+    setEditGallery([]);
+    setGalleryLoading(false);
   }
 
   async function submitCreate(e: React.FormEvent) {
@@ -174,17 +225,41 @@ export function AdminProductManager({ token }: Props) {
       if (!createForm.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
       if (!Number.isFinite(price) || price < 0) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
       if (!Number.isFinite(stock) || stock < 0) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
-      await adminCreateProduct(token, {
+      const galleryUrls = createGallery.map((x) => x.url.trim()).filter(Boolean);
+      const image_url = galleryUrls[0] ?? null;
+      const created = await adminCreateProduct(token, {
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
         price,
         category: createForm.category.trim() || null,
         tags: tagsForApi(createForm.tags),
-        image_url: createForm.image_url.trim() || null,
+        image_url,
         stock,
       });
+      let galleryError: string | null = null;
+      try {
+        for (let i = 1; i < galleryUrls.length; i++) {
+          await adminAddProductGalleryImage(token, created.id, galleryUrls[i]);
+        }
+      } catch (e) {
+        galleryError = e instanceof Error ? e.message : "เพิ่มรูปในแกลเลอรี่ไม่สำเร็จ";
+      }
       setCreateForm(emptyDraft);
-      setMsg("สร้างสินค้าแล้ว");
+      setCreateGallery([]);
+      setCreateUrlDraft("");
+      if (galleryError) {
+        setErr(
+          `${galleryError} — สินค้าถูกสร้างแล้ว (รูปแรกอาจถูกบันทึกแล้ว) ลองเปิดแก้ไขสินค้านี้เพื่อเพิ่มรูปที่เหลือ`,
+        );
+        setMsg(null);
+      } else {
+        setErr(null);
+        setMsg(
+          galleryUrls.length > 1
+            ? `สร้างสินค้าแล้ว — แนบรูป ${galleryUrls.length} ใบในแกลเลอรี่`
+            : "สร้างสินค้าแล้ว",
+        );
+      }
       await fetchList();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "สร้างสินค้าไม่สำเร็จ");
@@ -205,15 +280,18 @@ export function AdminProductManager({ token }: Props) {
       if (!form.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
       if (price !== undefined && (!Number.isFinite(price) || price < 0)) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
       if (stock !== undefined && (!Number.isFinite(stock) || stock < 0)) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
-      await adminUpdateProduct(token, editingId, {
+      const body: Parameters<typeof adminUpdateProduct>[2] = {
         name: form.name.trim(),
         description: form.description.trim() || null,
         price,
         category: form.category.trim() || null,
         tags: tagsForApi(form.tags),
-        image_url: form.image_url.trim() || null,
         stock,
-      });
+      };
+      if (editGallery.length === 0) {
+        body.image_url = form.image_url.trim() || null;
+      }
+      await adminUpdateProduct(token, editingId, body);
       setMsg("บันทึกการแก้ไขแล้ว");
       cancelEdit();
       await fetchList();
@@ -241,24 +319,120 @@ export function AdminProductManager({ token }: Props) {
     }
   }
 
-  async function uploadSelectedFile(file: File | undefined, which: "create" | "edit") {
-    if (!file) return;
-    setUploading(which);
+  async function uploadCreateGalleryFiles(files: FileList | File[] | null | undefined) {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
+    setUploading("create");
     setErr(null);
     try {
-      const { url } = await adminUploadProductImage(token, file);
-      if (which === "create") {
-        setCreateForm((c) => ({ ...c, image_url: url }));
-        if (createFileRef.current) createFileRef.current.value = "";
-      } else {
-        setForm((f) => ({ ...f, image_url: url }));
-        if (editFileRef.current) editFileRef.current.value = "";
+      const added: CreatePendingImage[] = [];
+      for (const file of list) {
+        const { url } = await adminUploadProductImage(token, file);
+        added.push({ key: newCreateImageKey(), url });
       }
-      setMsg("อัปโหลดรูปแล้ว");
+      setCreateGallery((g) => [...g, ...added]);
+      setMsg(added.length > 1 ? `อัปโหลดแล้ว ${added.length} รูป` : "อัปโหลดรูปแล้ว 1 รูป");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
     } finally {
       setUploading(null);
+      if (createFileRef.current) createFileRef.current.value = "";
+    }
+  }
+
+  function addCreateGalleryUrlsFromDraft() {
+    const raw = createUrlDraft.trim();
+    if (!raw) return;
+    const parts = raw
+      .split(/[\s,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!parts.length) {
+      setCreateUrlDraft("");
+      return;
+    }
+    setCreateGallery((g) => [...g, ...parts.map((url) => ({ key: newCreateImageKey(), url }))]);
+    setCreateUrlDraft("");
+    setMsg(`เพิ่ม URL แล้ว ${parts.length} รายการ`);
+  }
+
+  function removeCreateGalleryItem(key: string) {
+    setCreateGallery((g) => g.filter((x) => x.key !== key));
+  }
+
+  function moveCreateGalleryItem(idx: number, dir: -1 | 1) {
+    const j = idx + dir;
+    if (j < 0 || j >= createGallery.length) return;
+    setCreateGallery((g) => {
+      const next = [...g];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  }
+
+  async function uploadEditGalleryFile(file: File | undefined) {
+    if (!file) return;
+    setUploading("edit");
+    setErr(null);
+    try {
+      const { url } = await adminUploadProductImage(token, file);
+      const pid = editingId;
+      if (pid) {
+        setGalleryBusy(true);
+        try {
+          const detail = await adminAddProductGalleryImage(token, pid, url);
+          if (editDetailForIdRef.current === pid) applyAdminDetailToEditForm(detail);
+          setMsg("เพิ่มรูปในแกลเลอรี่แล้ว");
+        } finally {
+          setGalleryBusy(false);
+        }
+      } else {
+        setForm((f) => ({ ...f, image_url: url }));
+        setMsg("อัปโหลดรูปแล้ว");
+      }
+      if (editFileRef.current) editFileRef.current.value = "";
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "อัปโหลดไม่สำเร็จ");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function removeGalleryImage(imageId: string) {
+    if (!editingId) return;
+    if (!window.confirm("ลบรูปนี้จากแกลเลอรี่?")) return;
+    setGalleryBusy(true);
+    setErr(null);
+    try {
+      const detail = await adminDeleteProductGalleryImage(token, editingId, imageId);
+      if (editDetailForIdRef.current === editingId) applyAdminDetailToEditForm(detail);
+      setMsg("ลบรูปแล้ว");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "ลบรูปไม่สำเร็จ");
+    } finally {
+      setGalleryBusy(false);
+    }
+  }
+
+  async function moveGalleryImage(idx: number, dir: -1 | 1) {
+    if (!editingId) return;
+    const j = idx + dir;
+    if (j < 0 || j >= editGallery.length) return;
+    const next = [...editGallery];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    setGalleryBusy(true);
+    setErr(null);
+    try {
+      const detail = await adminReorderProductGallery(
+        token,
+        editingId,
+        next.map((row) => row.id),
+      );
+      if (editDetailForIdRef.current === editingId) applyAdminDetailToEditForm(detail);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "จัดเรียงรูปไม่สำเร็จ");
+    } finally {
+      setGalleryBusy(false);
     }
   }
 
@@ -312,7 +486,9 @@ export function AdminProductManager({ token }: Props) {
             <h3 className="text-base font-bold tracking-tight text-stone-900 dark:text-stone-50 sm:text-[1.0625rem]">
               เพิ่มสินค้าใหม่
             </h3>
-            <p className="text-xs text-stone-500 dark:text-stone-400">รูปและแท็กไม่บังคับ</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400">
+              รูปได้หลายใบ — เลือกหลายไฟล์พร้อมกันหรือวาง URL หลายอัน · แท็กไม่บังคับ
+            </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
@@ -380,47 +556,117 @@ export function AdminProductManager({ token }: Props) {
                 />
               </div>
             </label>
-            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
-              รูปสินค้า — เลือกไฟล์
-              <input
-                ref={createFileRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.svg,.ico,.heic,.heif"
-                disabled={uploading !== null}
-                onChange={(e) => void uploadSelectedFile(e.target.files?.[0], "create")}
-                className="mt-1.5 block w-full text-xs text-stone-600 file:mr-2 file:cursor-pointer file:rounded-lg file:border-0 file:bg-teal-600 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:shadow-sm hover:file:bg-teal-500 disabled:opacity-50 dark:text-stone-300"
-              />
-              <p className="mt-1 text-[11px] leading-snug text-stone-500 dark:text-stone-400">
-                JPEG, PNG, WebP, GIF, AVIF, BMP, SVG, ICO, HEIC/HEIF — สูงสุด 5MB (รองรับไฟล์ที่ Windows ส่งมาเป็น octet-stream โดยอ่านจากนามสกุล/เนื้อไฟล์)
+            <div className="sm:col-span-2 space-y-2 rounded-lg border border-stone-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-950/40">
+              <p className="text-xs font-medium text-stone-700 dark:text-stone-200">รูปสินค้า (หลายรูปได้)</p>
+              <p className="text-[11px] leading-snug text-stone-500 dark:text-stone-400">
+                รูปแรกในรายการ = รูปปก · เลือกหลายไฟล์ในครั้งเดียว (Ctrl/Shift+คลิก) หรืออัปโหลดทีละรอบก็ได้
               </p>
-            </label>
-            {createForm.image_url ? (
-              <div className="sm:col-span-2">
-                <p className="text-xs font-medium text-stone-500 dark:text-stone-400">ตัวอย่างรูป</p>
-                {/* eslint-disable-next-line @next/next/no-img-element -- admin preview for arbitrary URLs */}
-                <img
-                  src={displayImageSrc(createForm.image_url)}
-                  alt=""
-                  className="mt-1.5 h-24 max-w-full rounded-lg object-contain object-left ring-1 ring-stone-200 dark:ring-zinc-700"
+              <label className="block text-xs font-medium text-stone-600 dark:text-stone-300">
+                เลือกไฟล์ — รองรับหลายไฟล์
+                <input
+                  ref={createFileRef}
+                  type="file"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.svg,.ico,.heic,.heif"
+                  disabled={uploading !== null || busyId === "__create__"}
+                  onChange={(e) => void uploadCreateGalleryFiles(e.target.files)}
+                  className="mt-1.5 block w-full text-xs text-stone-600 file:mr-2 file:cursor-pointer file:rounded-lg file:border-0 file:bg-teal-600 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white file:shadow-sm hover:file:bg-teal-500 disabled:opacity-50 dark:text-stone-300"
                 />
+              </label>
+              <p className="text-[11px] leading-snug text-stone-500 dark:text-stone-400">
+                JPEG, PNG, WebP, GIF, AVIF, BMP, SVG, ICO, HEIC/HEIF — สูงสุด 5MB ต่อไฟล์ (รองรับไฟล์ที่ Windows ส่งมาเป็น octet-stream โดยอ่านจากนามสกุล/เนื้อไฟล์)
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <label className="block min-w-0 flex-1 text-xs font-medium text-stone-600 dark:text-stone-300">
+                  เพิ่มจาก URL
+                  <input
+                    value={createUrlDraft}
+                    onChange={(e) => setCreateUrlDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCreateGalleryUrlsFromDraft();
+                      }
+                    }}
+                    placeholder="https://… หรือวางหลาย URL คั่นด้วยเว้นวรรค / บรรทัดใหม่"
+                    className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={uploading !== null || busyId === "__create__" || !createUrlDraft.trim()}
+                  onClick={() => addCreateGalleryUrlsFromDraft()}
+                  className="shrink-0 rounded-lg border border-teal-600 bg-teal-50 px-4 py-2 text-xs font-semibold text-teal-900 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-teal-700 dark:bg-teal-950/40 dark:text-teal-100 dark:hover:bg-teal-900/50"
+                >
+                  เพิ่ม URL
+                </button>
               </div>
-            ) : null}
-            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
-              หรือใส่ URL รูปเอง (ไม่บังคับ)
-              <input
-                value={createForm.image_url}
-                onChange={(e) => setCreateForm((d) => ({ ...d, image_url: e.target.value }))}
-                placeholder="https://…"
-                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
-              />
-            </label>
+              {createGallery.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                    คิวรูป ({createGallery.length}) — จัดเรียงด้วยปุ่มลูกศร · รูปแรกเป็นปก
+                  </p>
+                  <ul className="max-h-60 space-y-2 overflow-y-auto pr-0.5">
+                    {createGallery.map((row, idx) => (
+                      <li
+                        key={row.key}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200/90 bg-stone-50/90 px-2 py-2 dark:border-zinc-600 dark:bg-zinc-900/60"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- admin preview */}
+                        <img
+                          src={displayImageSrc(row.url)}
+                          alt=""
+                          className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-stone-200 dark:ring-zinc-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-semibold text-stone-700 dark:text-stone-200">
+                            {idx === 0 ? "ปก" : `ลำดับที่ ${idx + 1}`}
+                          </p>
+                          <p className="truncate font-mono text-[10px] text-stone-500 dark:text-stone-400" title={row.url}>
+                            {row.url}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            disabled={uploading !== null || busyId === "__create__" || idx === 0}
+                            onClick={() => moveCreateGalleryItem(idx, -1)}
+                            className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={uploading !== null || busyId === "__create__" || idx >= createGallery.length - 1}
+                            onClick={() => moveCreateGalleryItem(idx, 1)}
+                            className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            disabled={uploading !== null || busyId === "__create__"}
+                            onClick={() => removeCreateGalleryItem(row.key)}
+                            className="rounded border border-rose-300 bg-white px-2 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-800 dark:bg-zinc-900 dark:text-rose-400"
+                          >
+                            ลบ
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-[11px] text-stone-500 dark:text-stone-400">ยังไม่มีรูปในรายการ — ไม่บังคับ</p>
+              )}
+            </div>
           </div>
           <button
             type="submit"
             disabled={busyId === "__create__" || uploading !== null}
             className="w-full rounded-lg bg-gradient-to-r from-teal-600 to-emerald-600 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/20 transition hover:from-teal-500 hover:to-emerald-500 active:scale-[0.99] disabled:opacity-50"
           >
-            {busyId === "__create__" ? "กำลังสร้าง…" : uploading === "create" ? "กำลังอัปโหลด…" : "เพิ่มสินค้า"}
+            {busyId === "__create__" ? "กำลังสร้าง…" : uploading === "create" ? "กำลังอัปโหลดรูป…" : "เพิ่มสินค้า"}
           </button>
         </form>
 
@@ -593,39 +839,106 @@ export function AdminProductManager({ token }: Props) {
                           hint="Enter / comma เพิ่มแท็ก · วางข้อความหลายแท็กได้"
                         />
                       </div>
+                      {galleryLoading ? (
+                        <p className="text-xs text-stone-500 sm:col-span-2 dark:text-stone-400">กำลังโหลดแกลเลอรี่…</p>
+                      ) : null}
+                      {editGallery.length > 0 ? (
+                        <div className="sm:col-span-2 space-y-2">
+                          <p className="text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                            แกลเลอรี่ ({editGallery.length} รูป) — รูปแรกคือปกสินค้า
+                          </p>
+                          <ul className="flex flex-col gap-2">
+                            {editGallery.map((row, idx) => (
+                              <li
+                                key={row.id}
+                                className="flex flex-wrap items-center gap-2 rounded-lg border border-stone-200/90 bg-stone-50/80 px-2 py-2 dark:border-zinc-700 dark:bg-zinc-900/50"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={displayImageSrc(row.image_url)}
+                                  alt=""
+                                  className="h-14 w-14 shrink-0 rounded-md object-cover ring-1 ring-stone-200 dark:ring-zinc-600"
+                                />
+                                <span className="text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                                  {idx === 0 ? "ปก" : `ลำดับที่ ${idx + 1}`}
+                                </span>
+                                <div className="ml-auto flex flex-wrap gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={galleryBusy || galleryLoading || idx === 0}
+                                    onClick={() => void moveGalleryImage(idx, -1)}
+                                    className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={galleryBusy || galleryLoading || idx >= editGallery.length - 1}
+                                    onClick={() => void moveGalleryImage(idx, 1)}
+                                    className="rounded border border-stone-300 bg-white px-2 py-1 text-[11px] font-semibold text-stone-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={galleryBusy || galleryLoading}
+                                    onClick={() => void removeGalleryImage(row.id)}
+                                    className="rounded border border-rose-300 bg-white px-2 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-800 dark:bg-zinc-900 dark:text-rose-400"
+                                  >
+                                    ลบ
+                                  </button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <p className="text-[11px] leading-snug text-stone-500 sm:col-span-2 dark:text-stone-400">
+                        {editGallery.length > 0
+                          ? "รูปหลักตามลำดับแรก — ใช้ปุ่มลูกศรสลับตำแหน่ง"
+                          : "เมื่อยังไม่มีรูปในแกลเลอรี่ ใส่ URL ด้านล่างได้ — พออัปโหลดไฟล์ ระบบจะสร้างแกลเลอรี่และตั้งรูปแรกเป็นปก"}
+                      </p>
                       <label className="block text-[11px] font-medium text-stone-500 dark:text-stone-400 sm:col-span-2">
-                        รูป — เลือกไฟล์ใหม่
+                        เพิ่มรูป (อัปโหลดเข้าแกลเลอรี่)
                         <input
                           ref={editFileRef}
                           type="file"
                           accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/bmp,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.avif,.bmp,.svg,.ico,.heic,.heif"
-                          disabled={uploading !== null}
-                          onChange={(e) => void uploadSelectedFile(e.target.files?.[0], "edit")}
+                          disabled={uploading !== null || galleryBusy || galleryLoading}
+                          onChange={(e) => void uploadEditGalleryFile(e.target.files?.[0])}
                           className="mt-1 block w-full text-xs text-stone-600 file:mr-2 file:cursor-pointer file:rounded-md file:border-0 file:bg-teal-600 file:px-3 file:py-1.5 file:font-semibold file:text-white hover:file:bg-teal-500 disabled:opacity-50 dark:text-stone-300"
                         />
                       </label>
                       {form.image_url ? (
                         <div className="sm:col-span-2">
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400">ตัวอย่างปก / รูปหลัก</p>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={displayImageSrc(form.image_url)}
                             alt=""
-                            className="h-20 max-w-full rounded-lg object-contain object-left ring-1 ring-stone-200 dark:ring-zinc-700"
+                            className="mt-1 h-20 max-w-full rounded-lg object-contain object-left ring-1 ring-stone-200 dark:ring-zinc-700"
                           />
                         </div>
                       ) : null}
-                      <input
-                        value={form.image_url}
-                        onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                        placeholder="หรือ URL รูป"
-                        className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950 sm:col-span-2"
-                      />
+                      <label className="block sm:col-span-2">
+                        <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                          {editGallery.length > 0
+                            ? "URL รูปเดี่ยว (ปิดเมื่อมีแกลเลอรี่ — แก้จากรายการด้านบน)"
+                            : "หรือ URL รูปเมื่อยังไม่มีแกลเลอรี่"}
+                        </span>
+                        <input
+                          value={form.image_url}
+                          onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                          placeholder="https://…"
+                          disabled={editGallery.length > 0}
+                          className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 disabled:cursor-not-allowed disabled:opacity-55 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                        />
+                      </label>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="submit"
-                        disabled={busyId === editingId || uploading !== null}
-                        className="rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-teal-600/20 hover:bg-teal-500 disabled:opacity-50"
+                        disabled={busyId === editingId || uploading !== null || galleryBusy}
                       >
                         {busyId === editingId ? "กำลังบันทึก…" : "บันทึก"}
                       </button>

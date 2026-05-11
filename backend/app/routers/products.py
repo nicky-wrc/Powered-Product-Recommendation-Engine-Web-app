@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.product import Product
+from app.models.product_image import ProductImage
 from app.schemas.products import (
     ProductListResponse,
     ProductSuggestItem,
@@ -154,8 +155,17 @@ def get_product(product_id: UUID, db: Session = Depends(get_db)) -> ProductWithS
 
     bought = bought_together_products(db, product_id, 8)
 
+    gallery_rows = list(
+        db.scalars(
+            select(ProductImage)
+            .where(ProductImage.product_id == product_id)
+            .order_by(ProductImage.sort_order.asc(), ProductImage.id.asc()),
+        ).all(),
+    )
+    gallery_urls = [r.image_url for r in gallery_rows] or ([p.image_url] if p.image_url else [])
+
     return ProductWithSimilar(
-        product=product_public(p),
+        product=product_public(p, gallery_urls=gallery_urls),
         similar_products=[product_public(x) for x in similar],
         bought_together=[product_public(x) for x in bought],
     )

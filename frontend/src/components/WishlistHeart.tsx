@@ -6,7 +6,10 @@ import type { Product } from "@/lib/api";
 import { isInWishlist, toggleWishlist, WISHLIST_CHANGED_EVENT } from "@/lib/wishlist";
 
 type Props = {
-  product: Pick<Product, "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock">;
+  product: Pick<
+    Product,
+    "id" | "name" | "price" | "image_url" | "image_urls" | "description" | "category" | "tags" | "stock"
+  >;
   className?: string;
 };
 

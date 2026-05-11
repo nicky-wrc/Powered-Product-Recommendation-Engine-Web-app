@@ -10,6 +10,8 @@ export type WishlistItem = {
   name: string;
   price: number;
   image_url: string | null;
+  /** เก็บเมื่อมีหลายรูป (PDP / แกลเลอรี่) — รายการเก่าใน localStorage อาจไม่มีฟิลด์นี้ */
+  image_urls?: string[] | null;
   description: string | null;
   category: string | null;
   tags: string[] | null;
@@ -21,12 +23,15 @@ function notify() {
   window.dispatchEvent(new Event(WISHLIST_CHANGED_EVENT));
 }
 
-function toItem(p: Pick<Product, "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock">): WishlistItem {
+function toItem(
+  p: Pick<Product, "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock" | "image_urls">,
+): WishlistItem {
   return {
     id: p.id,
     name: p.name,
     price: p.price,
     image_url: p.image_url,
+    image_urls: p.image_urls?.length ? p.image_urls : null,
     description: p.description ?? null,
     category: p.category ?? null,
     tags: p.tags ?? null,
@@ -95,6 +100,7 @@ export function wishlistItemToProduct(w: WishlistItem): Product {
     name: w.name,
     price: w.price,
     image_url: w.image_url,
+    image_urls: w.image_urls?.length ? w.image_urls : undefined,
     description: w.description,
     category: w.category,
     tags: w.tags,

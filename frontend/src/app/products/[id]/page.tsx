@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -6,13 +5,14 @@ import { notFound } from "next/navigation";
 import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
-import { fetchProduct, isLocalUploadImageUrl, productImageUrl } from "@/lib/api";
+import { fetchProduct, productGalleryUrls } from "@/lib/api";
 import { demoConcurrentViewers } from "@/lib/socialProof";
 import { absoluteUrl } from "@/lib/siteUrl";
 import { cache } from "react";
@@ -27,7 +27,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!data) return { title: "Product" };
 
   const p = data.product;
-  const img = productImageUrl(p);
   const priceStr = `$${p.price.toFixed(2)}`;
   const rawDesc = p.description?.replace(/\s+/g, " ").trim() ?? "";
   const description =
@@ -35,14 +34,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       ? rawDesc.slice(0, 155) + (rawDesc.length > 155 ? "…" : "")
       : `${p.name} — ${priceStr}${p.category ? ` · ${p.category}` : ""}`;
 
-  const images = img
-    ? [
-        {
-          url: img,
+  const resolvedGallery = productGalleryUrls(p);
+  const images =
+    resolvedGallery.length > 0
+      ? resolvedGallery.map((url) => ({
+          url,
           alt: p.name,
-        },
-      ]
-    : undefined;
+        }))
+      : undefined;
 
   return {
     title: p.name,
@@ -68,16 +67,15 @@ export default async function ProductDetailPage({ params }: Props) {
   const data = await getProductPageData(id);
   if (!data) notFound();
   const { product: p, similar_products, bought_together } = data;
-  const heroImg = productImageUrl(p);
   const shareUrl = absoluteUrl(`/products/${p.id}`);
-  const imageAbsolute = heroImg ? absoluteUrl(heroImg) : undefined;
+  const resolvedImages = productGalleryUrls(p).map((u) => absoluteUrl(u));
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: p.name,
     description: p.description ?? undefined,
-    image: imageAbsolute ? [imageAbsolute] : undefined,
+    image: resolvedImages.length > 0 ? resolvedImages : undefined,
     offers: {
       "@type": "Offer",
       url: shareUrl,
@@ -101,24 +99,8 @@ export default async function ProductDetailPage({ params }: Props) {
           <span className="text-stone-800 dark:text-stone-200">{p.name}</span>
         </nav>
 
-        <div className="grid gap-10 lg:grid-cols-2 lg:gap-14">
-          <div className="relative aspect-square w-full overflow-hidden rounded-3xl border border-stone-200/90 bg-stone-100 shadow-xl ring-1 ring-stone-900/5 dark:border-zinc-800 dark:bg-zinc-900 dark:ring-white/5">
-            <WishlistHeart product={p} className="absolute right-4 top-4 z-10" />
-            {heroImg ? (
-              <Image
-                src={heroImg}
-                alt={p.name}
-                fill
-                priority
-                loading="eager"
-                unoptimized={isLocalUploadImageUrl(p.image_url)}
-                className="object-cover"
-                sizes="(max-width: 1024px) 100vw, 50vw"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-stone-400">No image</div>
-            )}
-          </div>
+        <div className="grid gap-10 lg:grid-cols-2 lg:gap-14 lg:items-start">
+          <ProductImageGallery product={p} wishlistSlot={<WishlistHeart product={p} />} />
           <div className="flex flex-col gap-5">
             {p.category ? (
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">
