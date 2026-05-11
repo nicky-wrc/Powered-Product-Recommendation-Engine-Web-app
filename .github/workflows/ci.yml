@@ -28,6 +28,9 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      SECRET_KEY: ci-not-for-production
+      SKIP_DB_BOOTSTRAP: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
