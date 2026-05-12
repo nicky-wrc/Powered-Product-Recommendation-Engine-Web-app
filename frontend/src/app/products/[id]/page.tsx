@@ -6,7 +6,9 @@ import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { ProductRecentSection } from "@/components/ProductRecentSection";
 import { ProductReviewsSection } from "@/components/ProductReviewsSection";
+import { ProductServicePoliciesSection } from "@/components/ProductServicePoliciesSection";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -185,6 +187,10 @@ export default async function ProductDetailPage({ params }: Props) {
         </div>
 
         <ProductReviewsSection productId={p.id} initialSummary={review_summary} initialEligibility={review_eligibility} />
+
+        <ProductServicePoliciesSection product={p} />
+
+        <ProductRecentSection currentProductId={p.id} />
 
         {bought_together.length > 0 ? (
           <section className="space-y-5">
