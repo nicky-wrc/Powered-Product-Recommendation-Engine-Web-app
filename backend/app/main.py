@@ -17,6 +17,7 @@ from app.models import (
     OrderItem,
     Product,
     ProductImage,
+    ProductReview,
     Recommendation,
     User,
     UserAddress,
@@ -30,7 +31,7 @@ from app.services.seed import (
     seed_products_if_empty,
     sync_demo_catalog_images,
 )
-from app.upload_paths import PRODUCT_IMAGES_DIR, PROFILE_IMAGES_DIR, UPLOADS_ROOT
+from app.upload_paths import PRODUCT_IMAGES_DIR, PROFILE_IMAGES_DIR, REVIEW_IMAGES_DIR, UPLOADS_ROOT
 
 
 @asynccontextmanager
@@ -57,6 +58,7 @@ mimetypes.add_type("image/avif", ".avif")
 mimetypes.add_type("image/svg+xml", ".svg")
 PRODUCT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 PROFILE_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+REVIEW_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Recommendation Engine API", version=settings.app_version, lifespan=lifespan)
 register_exception_handlers(app)

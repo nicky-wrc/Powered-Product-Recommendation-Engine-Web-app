@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,7 +10,7 @@ from app.deps import get_current_user
 from app.image_upload import read_image_upload
 from app.models.user import User
 from app.schemas.auth import PasswordChange, ProfileUpdate, TokenResponse, UserCreate, UserLogin, UserPublic
-from app.upload_paths import PROFILE_IMAGES_DIR
+from app.upload_paths import PROFILE_IMAGES_DIR, REVIEW_IMAGES_DIR
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -138,3 +140,17 @@ def remove_avatar(
     db.commit()
     db.refresh(user)
     return _public(user)
+
+
+@router.post("/me/upload/review-image")
+async def upload_review_image(
+    file: UploadFile = File(...),
+    _user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """Store an image for use in product reviews (returns `/uploads/review-images/...` URL)."""
+    data, ext = await read_image_upload(file)
+    REVIEW_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid4().hex}{ext}"
+    dest = REVIEW_IMAGES_DIR / name
+    dest.write_bytes(data)
+    return {"url": f"/uploads/review-images/{name}"}

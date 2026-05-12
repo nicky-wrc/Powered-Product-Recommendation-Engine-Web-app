@@ -3,6 +3,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.product import Product
+from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
 
 
 class ProductPublic(BaseModel):
@@ -56,6 +57,8 @@ class ProductWithSimilar(BaseModel):
     product: ProductPublic
     similar_products: list[ProductPublic]
     bought_together: list[ProductPublic] = Field(default_factory=list)
+    review_summary: ReviewSummary = Field(default_factory=ReviewSummary)
+    review_eligibility: ProductReviewEligibility = Field(default_factory=ProductReviewEligibility)
 
 
 class ProductGalleryRow(BaseModel):

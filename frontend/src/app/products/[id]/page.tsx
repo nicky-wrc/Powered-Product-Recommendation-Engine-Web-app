@@ -6,6 +6,7 @@ import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { ProductReviewsSection } from "@/components/ProductReviewsSection";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -66,11 +67,11 @@ export default async function ProductDetailPage({ params }: Props) {
   const { id } = await params;
   const data = await getProductPageData(id);
   if (!data) notFound();
-  const { product: p, similar_products, bought_together } = data;
+  const { product: p, similar_products, bought_together, review_summary, review_eligibility } = data;
   const shareUrl = absoluteUrl(`/products/${p.id}`);
   const resolvedImages = productGalleryUrls(p).map((u) => absoluteUrl(u));
 
-  const jsonLd = {
+  const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: p.name,
@@ -84,6 +85,15 @@ export default async function ProductDetailPage({ params }: Props) {
       availability: p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
     },
   };
+  if (review_summary.count > 0 && review_summary.average != null) {
+    jsonLd.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: review_summary.average,
+      bestRating: 5,
+      worstRating: 1,
+      ratingCount: review_summary.count,
+    };
+  }
 
   return (
     <div className="min-h-screen">
@@ -173,6 +183,8 @@ export default async function ProductDetailPage({ params }: Props) {
             <ProductActions product={p} />
           </div>
         </div>
+
+        <ProductReviewsSection productId={p.id} initialSummary={review_summary} initialEligibility={review_eligibility} />
 
         {bought_together.length > 0 ? (
           <section className="space-y-5">

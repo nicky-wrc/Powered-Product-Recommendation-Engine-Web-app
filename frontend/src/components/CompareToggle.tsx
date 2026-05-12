@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+import { useAppModal } from "@/components/AppModalProvider";
+
 import type { Product } from "@/lib/api";
 import {
   COMPARE_CHANGED_EVENT,
+  compareCount,
   isInCompare,
   toggleCompare,
 } from "@/lib/compare";
@@ -16,7 +19,7 @@ type Props = {
 
 export function CompareToggle({ product, className = "" }: Props) {
   const [on, setOn] = useState(false);
-  const [capacityMsg, setCapacityMsg] = useState(false);
+  const { alert, confirm } = useAppModal();
 
   useEffect(() => {
     const sync = () => setOn(isInCompare(product.id));
@@ -34,14 +37,45 @@ export function CompareToggle({ product, className = "" }: Props) {
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          setCapacityMsg(false);
-          const { inCompare: next, atCapacity } = toggleCompare(product);
-          if (atCapacity) {
-            setCapacityMsg(true);
-            window.setTimeout(() => setCapacityMsg(false), 3200);
-            return;
-          }
-          setOn(next);
+          void (async () => {
+            const inList = isInCompare(product.id);
+            if (inList) {
+              const ok = await confirm({
+                title: "เอาออกจากเปรียบเทียบ",
+                message: `เอา "${product.name}" ออกจากรายการเปรียบเทียบ?`,
+                confirmLabel: "เอาออก",
+                cancelLabel: "ยกเลิก",
+                variant: "danger",
+              });
+              if (!ok) return;
+              toggleCompare(product);
+              setOn(false);
+              return;
+            }
+            if (compareCount() >= 4) {
+              void alert({
+                title: "รายการเปรียบเทียบเต็ม",
+                message: "เพิ่มได้สูงสุด 4 ชิ้น — ลบบางรายการที่หน้าเปรียบเทียบก่อน",
+              });
+              return;
+            }
+            const ok = await confirm({
+              title: "เพิ่มลงเปรียบเทียบ",
+              message: `เพิ่ม "${product.name}" ลงรายการเปรียบเทียบ?`,
+              confirmLabel: "เพิ่ม",
+              cancelLabel: "ยกเลิก",
+            });
+            if (!ok) return;
+            const { inCompare: nextOn, atCapacity } = toggleCompare(product);
+            if (atCapacity) {
+              void alert({
+                title: "รายการเปรียบเทียบเต็ม",
+                message: "เพิ่มได้สูงสุด 4 ชิ้น — ลบบางรายการที่หน้าเปรียบเทียบก่อน",
+              });
+              return;
+            }
+            setOn(nextOn);
+          })();
         }}
         className={`w-full rounded-xl border px-3 py-2.5 text-xs font-semibold transition ${
           on
@@ -51,11 +85,6 @@ export function CompareToggle({ product, className = "" }: Props) {
       >
         {on ? "✓ ในรายการเปรียบเทียบ" : "เปรียบเทียบ"}
       </button>
-      {capacityMsg ? (
-        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-          เพิ่มได้สูงสุด 4 ชิ้น — ลบบางรายการที่หน้าเปรียบเทียบก่อน
-        </p>
-      ) : null}
     </div>
   );
 }

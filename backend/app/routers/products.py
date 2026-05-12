@@ -4,16 +4,28 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.deps import get_current_user, get_current_user_optional
+from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.product_review import ProductReview
+from app.models.user import User
 from app.schemas.products import (
     ProductListResponse,
     ProductSuggestItem,
     ProductWithSimilar,
     product_public,
+)
+from app.schemas.reviews import (
+    ProductReviewCreate,
+    ProductReviewCreateResponse,
+    ProductReviewEligibility,
+    ProductReviewListResponse,
+    ProductReviewPublic,
+    ReviewSummary,
 )
 from app.services.bought_together import bought_together_products
 
@@ -130,8 +142,190 @@ def suggest_products(
     return [ProductSuggestItem(id=p.id, name=p.name, category=p.category) for p in rows]
 
 
+def _user_has_purchased_product(db: Session, user_id: UUID, product_id: UUID) -> bool:
+    stmt = (
+        select(OrderItem.id)
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(
+            Order.user_id == user_id,
+            OrderItem.product_id == product_id,
+            Order.status == "completed",
+        )
+        .limit(1)
+    )
+    return db.scalar(stmt) is not None
+
+
+def _review_eligibility(db: Session, product_id: UUID, viewer: User | None) -> ProductReviewEligibility:
+    if viewer is None:
+        return ProductReviewEligibility(can_submit_review=False, reason="login")
+    has_review = (
+        db.scalar(
+            select(ProductReview.id).where(
+                ProductReview.product_id == product_id,
+                ProductReview.user_id == viewer.id,
+            ).limit(1),
+        )
+        is not None
+    )
+    if has_review:
+        return ProductReviewEligibility(can_submit_review=True, reason=None)
+    if not _user_has_purchased_product(db, viewer.id, product_id):
+        return ProductReviewEligibility(can_submit_review=False, reason="purchase")
+    return ProductReviewEligibility(can_submit_review=True, reason=None)
+
+
+def _review_summary(db: Session, product_id: UUID) -> ReviewSummary:
+    cnt = int(
+        db.scalar(
+            select(func.count()).select_from(ProductReview).where(ProductReview.product_id == product_id),
+        )
+        or 0,
+    )
+    if cnt == 0:
+        return ReviewSummary(average=None, count=0)
+    avg_raw = db.scalar(select(func.avg(ProductReview.rating)).where(ProductReview.product_id == product_id))
+    avg = round(float(avg_raw), 2) if avg_raw is not None else None
+    return ReviewSummary(average=avg, count=cnt)
+
+
+def _review_public(row: ProductReview, viewer_id: UUID | None) -> ProductReviewPublic:
+    author = row.user.name.strip() if row.user and row.user.name else "Member"
+    return ProductReviewPublic(
+        id=row.id,
+        rating=row.rating,
+        title=row.title,
+        body=row.body,
+        image_urls=list(row.image_urls) if row.image_urls else [],
+        author_name=author,
+        created_at=row.created_at,
+        is_mine=viewer_id is not None and row.user_id == viewer_id,
+    )
+
+
+def _ensure_product(db: Session, product_id: UUID) -> Product:
+    p = db.get(Product, product_id)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    return p
+
+
+@router.get("/{product_id}/reviews/can-submit", response_model=ProductReviewEligibility)
+def product_review_can_submit(
+    product_id: UUID,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_current_user_optional),
+) -> ProductReviewEligibility:
+    _ensure_product(db, product_id)
+    return _review_eligibility(db, product_id, viewer)
+
+
+@router.get("/{product_id}/reviews", response_model=ProductReviewListResponse)
+def list_product_reviews(
+    product_id: UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_current_user_optional),
+) -> ProductReviewListResponse:
+    _ensure_product(db, product_id)
+    viewer_id = viewer.id if viewer else None
+    count_stmt = select(func.count()).select_from(ProductReview).where(ProductReview.product_id == product_id)
+    total = int(db.scalar(count_stmt) or 0)
+    total_pages = math.ceil(total / limit) if limit else 0
+    avg_raw = db.scalar(select(func.avg(ProductReview.rating)).where(ProductReview.product_id == product_id))
+    avg = round(float(avg_raw), 2) if total > 0 and avg_raw is not None else None
+    stmt = (
+        select(ProductReview)
+        .where(ProductReview.product_id == product_id)
+        .options(joinedload(ProductReview.user))
+        .order_by(ProductReview.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    )
+    rows = list(db.scalars(stmt).unique().all())
+    return ProductReviewListResponse(
+        items=[_review_public(r, viewer_id) for r in rows],
+        total=total,
+        page=page,
+        total_pages=total_pages,
+        average=avg,
+    )
+
+
+@router.post("/{product_id}/reviews", response_model=ProductReviewCreateResponse)
+def upsert_my_product_review(
+    product_id: UUID,
+    body: ProductReviewCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProductReviewCreateResponse:
+    _ensure_product(db, product_id)
+    existing = db.scalar(
+        select(ProductReview).where(
+            ProductReview.product_id == product_id,
+            ProductReview.user_id == user.id,
+        ),
+    )
+    if existing is None and not _user_has_purchased_product(db, user.id, product_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "จะรีวิวได้เมื่อเคยสั่งซื้อสินค้านี้แล้วเท่านั้น (ออเดอร์สถานะสำเร็จ)",
+        )
+    imgs = list(body.image_urls) if body.image_urls else None
+    if existing:
+        existing.rating = body.rating
+        existing.title = body.title
+        existing.body = body.body
+        existing.image_urls = imgs
+    else:
+        existing = ProductReview(
+            product_id=product_id,
+            user_id=user.id,
+            rating=body.rating,
+            title=body.title,
+            body=body.body,
+            image_urls=imgs,
+        )
+        db.add(existing)
+    db.commit()
+    rid = existing.id
+    row = db.scalar(
+        select(ProductReview)
+        .where(ProductReview.id == rid)
+        .options(joinedload(ProductReview.user)),
+    )
+    assert row is not None
+    summ = _review_summary(db, product_id)
+    return ProductReviewCreateResponse(review=_review_public(row, user.id), review_summary=summ)
+
+
+@router.delete("/{product_id}/reviews/me", response_model=ReviewSummary)
+def delete_my_product_review(
+    product_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ReviewSummary:
+    _ensure_product(db, product_id)
+    row = db.scalar(
+        select(ProductReview).where(
+            ProductReview.product_id == product_id,
+            ProductReview.user_id == user.id,
+        ),
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No review to delete")
+    db.delete(row)
+    db.commit()
+    return _review_summary(db, product_id)
+
+
 @router.get("/{product_id}", response_model=ProductWithSimilar)
-def get_product(product_id: UUID, db: Session = Depends(get_db)) -> ProductWithSimilar:
+def get_product(
+    product_id: UUID,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_current_user_optional),
+) -> ProductWithSimilar:
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
@@ -168,4 +362,6 @@ def get_product(product_id: UUID, db: Session = Depends(get_db)) -> ProductWithS
         product=product_public(p, gallery_urls=gallery_urls),
         similar_products=[product_public(x) for x in similar],
         bought_together=[product_public(x) for x in bought],
+        review_summary=_review_summary(db, product_id),
+        review_eligibility=_review_eligibility(db, product_id, viewer),
     )

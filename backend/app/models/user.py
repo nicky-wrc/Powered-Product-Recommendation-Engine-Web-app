@@ -42,3 +42,8 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    product_reviews: Mapped[list["ProductReview"]] = relationship(
+        "ProductReview",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

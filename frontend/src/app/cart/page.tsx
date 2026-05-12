@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import { FreeShippingProgress } from "@/components/FreeShippingProgress";
+import { useAppModal } from "@/components/AppModalProvider";
 import {
   API_BASE,
   createStripeCheckoutSession,
@@ -41,6 +42,7 @@ type Line = {
 
 export default function CartPage() {
   const router = useRouter();
+  const { confirm } = useAppModal();
   const [lines, setLines] = useState<Line[]>([]);
   const [saved, setSaved] = useState<SavedForLaterLine[]>([]);
   const [busy, setBusy] = useState(false);
@@ -95,6 +97,16 @@ export default function CartPage() {
     const t = getToken();
     const next = line.qty + delta;
     setErr(null);
+    if (next < 1) {
+      const ok = await confirm({
+        title: "เอาสินค้าออกจากตะกร้า",
+        message: `ต้องการลบ "${line.name}" ออกจากตะกร้าหรือไม่?`,
+        confirmLabel: "ลบ",
+        cancelLabel: "ยกเลิก",
+        variant: "danger",
+      });
+      if (!ok) return;
+    }
     try {
       if (t) {
         if (next < 1) await deleteCartItem(t, line.product_id);
@@ -110,6 +122,14 @@ export default function CartPage() {
   }
 
   async function remove(line: Line) {
+    const ok = await confirm({
+      title: "เอาสินค้าออกจากตะกร้า",
+      message: `ต้องการลบ "${line.name}" ออกจากตะกร้าหรือไม่?`,
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     const t = getToken();
     setErr(null);
     try {
@@ -122,6 +142,13 @@ export default function CartPage() {
   }
 
   async function saveLineForLater(line: Line) {
+    const ok = await confirm({
+      title: "Save for later",
+      message: `ย้าย "${line.name}" (จำนวน ${line.qty}) ออกจากตะกร้าไปเก็บใน Saved for later?`,
+      confirmLabel: "ย้าย",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     setErr(null);
     try {
@@ -141,6 +168,13 @@ export default function CartPage() {
   }
 
   async function moveSavedToCart(row: SavedForLaterLine) {
+    const ok = await confirm({
+      title: "ย้ายกลับตะกร้า",
+      message: `เพิ่ม "${row.name}" จำนวน ${row.qty} ชิ้น กลับเข้าตะกร้า?`,
+      confirmLabel: "ย้าย",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     setErr(null);
     try {
@@ -153,7 +187,15 @@ export default function CartPage() {
     }
   }
 
-  function removeSavedRow(row: SavedForLaterLine) {
+  async function removeSavedRow(row: SavedForLaterLine) {
+    const ok = await confirm({
+      title: "ลบรายการ",
+      message: `ลบ "${row.name}" ออกจาก Saved for later?`,
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     removeSavedForLater(row.product_id);
   }
 
@@ -164,6 +206,16 @@ export default function CartPage() {
       return;
     }
     if (lines.length === 0) return;
+    const GIFT_WRAP_FEE = 4.99;
+    const subtotal = cartSubtotal(lines);
+    const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const ok = await confirm({
+      title: "ยืนยันสั่งซื้อ (demo)",
+      message: `สั่งซื้อ ${lines.length} รายการ ยอดรวมประมาณ $${orderTotal.toFixed(2)} (ชำระแบบเดโม — ไม่ตัดบัตรจริง)`,
+      confirmLabel: "ยืนยันสั่งซื้อ",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     setErr(null);
     setBusy(true);
     try {
@@ -195,6 +247,16 @@ export default function CartPage() {
       return;
     }
     if (lines.length === 0) return;
+    const GIFT_WRAP_FEE = 4.99;
+    const subtotal = cartSubtotal(lines);
+    const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const ok = await confirm({
+      title: "ไปชำระด้วย Stripe",
+      message: `คุณจะถูกพาไปหน้าชำระเงินทดสอบ (test mode)\nยอดประมาณ $${orderTotal.toFixed(2)}`,
+      confirmLabel: "ดำเนินการต่อ",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     setErr(null);
     setBusy(true);
     try {
@@ -488,7 +550,7 @@ export default function CartPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => removeSavedRow(row)}
+                              onClick={() => void removeSavedRow(row)}
                               className="text-xs text-red-600 hover:underline dark:text-red-400"
                             >
                               Remove

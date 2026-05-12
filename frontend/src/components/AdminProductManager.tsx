@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TagInput } from "@/components/TagInput";
+import { useAppModal } from "@/components/AppModalProvider";
 import {
   adminAddProductGalleryImage,
   adminCreateProduct,
@@ -86,6 +87,7 @@ function newCreateImageKey(): string {
 }
 
 export function AdminProductManager({ token }: Props) {
+  const { confirm } = useAppModal();
   const createFileRef = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
   const editDetailForIdRef = useRef<string | null>(null);
@@ -303,7 +305,14 @@ export function AdminProductManager({ token }: Props) {
   }
 
   async function remove(p: Product) {
-    if (!window.confirm(`ลบสินค้า "${p.name}"?\nถ้าสินค้านี้อยู่ในคำสั่งซื้อ ระบบจะไม่ให้ลบ (409)`)) return;
+    const ok = await confirm({
+      title: "ลบสินค้า",
+      message: `ลบสินค้า "${p.name}"?\nถ้าสินค้านี้อยู่ในคำสั่งซื้อ ระบบจะไม่ให้ลบ (409)`,
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     setBusyId(p.id);
     setMsg(null);
     setErr(null);
@@ -400,7 +409,14 @@ export function AdminProductManager({ token }: Props) {
 
   async function removeGalleryImage(imageId: string) {
     if (!editingId) return;
-    if (!window.confirm("ลบรูปนี้จากแกลเลอรี่?")) return;
+    const ok = await confirm({
+      title: "ลบรูป",
+      message: "ลบรูปนี้จากแกลเลอรี่?",
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     setGalleryBusy(true);
     setErr(null);
     try {

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
 import { CompareToggle } from "@/components/CompareToggle";
+import { useAppModal } from "@/components/AppModalProvider";
 import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
@@ -13,10 +14,18 @@ type Props = { p: Product; priority?: boolean };
 
 export function ProductCard({ p, priority = false }: Props) {
   const img = productImageUrl(p);
+  const { confirm } = useAppModal();
 
   async function quickAdd(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    const ok = await confirm({
+      title: "เพิ่มลงตะกร้า",
+      message: `เพิ่ม "${p.name}" จำนวน 1 ชิ้น ลงตะกร้า?`,
+      confirmLabel: "เพิ่ม",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     await addProductToCart(t, p, 1);
     if (t) {

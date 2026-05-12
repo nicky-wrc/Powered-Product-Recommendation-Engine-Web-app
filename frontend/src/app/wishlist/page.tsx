@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAppModal } from "@/components/AppModalProvider";
 import { getToken, isLocalUploadImageUrl, postEvent, productImageUrl } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
 import type { WishlistItem } from "@/lib/wishlist";
@@ -12,6 +13,7 @@ import { getWishlist, removeFromWishlist, wishlistItemToProduct, WISHLIST_CHANGE
 
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
+  const { confirm } = useAppModal();
 
   useEffect(() => {
     const sync = () => queueMicrotask(() => setItems(getWishlist()));
@@ -21,6 +23,13 @@ export default function WishlistPage() {
   }, []);
 
   async function addToCart(w: WishlistItem) {
+    const ok = await confirm({
+      title: "เพิ่มลงตะกร้า",
+      message: `เพิ่ม "${w.name}" จำนวน 1 ชิ้น ลงตะกร้า?`,
+      confirmLabel: "เพิ่ม",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     const p = wishlistItemToProduct(w);
     await addProductToCart(t, p, 1);
@@ -31,6 +40,18 @@ export default function WishlistPage() {
         /* ignore */
       }
     }
+  }
+
+  async function removeItem(w: WishlistItem) {
+    const ok = await confirm({
+      title: "เอาออกจาก Wishlist",
+      message: `เอา "${w.name}" ออกจากรายการโปรด?`,
+      confirmLabel: "เอาออก",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
+    removeFromWishlist(w.id);
   }
 
   return (
@@ -94,7 +115,7 @@ export default function WishlistPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeFromWishlist(w.id)}
+                      onClick={() => void removeItem(w)}
                       className="rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-300 dark:hover:bg-zinc-800"
                     >
                       Remove

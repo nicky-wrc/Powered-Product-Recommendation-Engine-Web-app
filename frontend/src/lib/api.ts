@@ -425,9 +425,44 @@ export async function fetchProductSuggestions(q: string, signal?: AbortSignal): 
   return r.json();
 }
 
+export type ProductReviewEligibility = {
+  can_submit_review: boolean;
+  reason: "login" | "purchase" | null;
+};
+
+export type ReviewSummary = {
+  average: number | null;
+  count: number;
+};
+
+export type ProductReview = {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  image_urls: string[];
+  author_name: string;
+  created_at: string;
+  is_mine: boolean;
+};
+
+export type ProductReviewListResponse = {
+  items: ProductReview[];
+  total: number;
+  page: number;
+  total_pages: number;
+  average: number | null;
+};
+
 export async function fetchProduct(
   id: string,
-): Promise<{ product: Product; similar_products: Product[]; bought_together: Product[] } | null> {
+): Promise<{
+  product: Product;
+  similar_products: Product[];
+  bought_together: Product[];
+  review_summary: ReviewSummary;
+  review_eligibility: ProductReviewEligibility;
+} | null> {
   const r = await fetch(`${API_BASE}/api/products/${id}`, { next: { revalidate: 15 } });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error("Failed to load product");
@@ -435,12 +470,85 @@ export async function fetchProduct(
     product: Product;
     similar_products: Product[];
     bought_together?: Product[];
+    review_summary?: ReviewSummary;
+    review_eligibility?: ProductReviewEligibility;
   };
   return {
     product: data.product,
     similar_products: data.similar_products,
     bought_together: data.bought_together ?? [],
+    review_summary: data.review_summary ?? { average: null, count: 0 },
+    review_eligibility: data.review_eligibility ?? { can_submit_review: false, reason: null },
   };
+}
+
+export async function fetchProductReviewEligibility(
+  productId: string,
+  token: string | null,
+): Promise<ProductReviewEligibility> {
+  const headers: HeadersInit = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const r = await fetch(`${API_BASE}/api/products/${productId}/reviews/can-submit`, {
+    headers,
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function fetchProductReviews(productId: string, page = 1): Promise<ProductReviewListResponse> {
+  const sp = new URLSearchParams({ page: String(page), limit: "10" });
+  const r = await fetch(`${API_BASE}/api/products/${productId}/reviews?${sp}`, { cache: "no-store" });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export type ProductReviewUpsertBody = {
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+  image_urls?: string[] | null;
+};
+
+export async function upsertProductReview(
+  token: string,
+  productId: string,
+  body: ProductReviewUpsertBody,
+): Promise<{ review: ProductReview; review_summary: ReviewSummary }> {
+  const r = await fetch(`${API_BASE}/api/products/${productId}/reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function deleteMyProductReview(token: string, productId: string): Promise<ReviewSummary> {
+  const r = await fetch(`${API_BASE}/api/products/${productId}/reviews/me`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function uploadReviewImage(token: string, file: File): Promise<{ url: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(`${API_BASE}/api/auth/me/upload/review-image`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
 }
 
 export type AdminAnalytics = {

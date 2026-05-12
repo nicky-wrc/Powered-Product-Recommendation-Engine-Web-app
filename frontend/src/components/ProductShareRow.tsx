@@ -2,6 +2,8 @@
 
 import { useState, useSyncExternalStore } from "react";
 
+import { useAppModal } from "@/components/AppModalProvider";
+
 type Props = {
   url: string;
   title: string;
@@ -21,6 +23,7 @@ function getClientCanNativeShare() {
 
 export function ProductShareRow({ url, title }: Props) {
   const [copied, setCopied] = useState(false);
+  const { alert } = useAppModal();
   const canNativeShare = useSyncExternalStore(
     subscribeToNothing,
     getClientCanNativeShare,
@@ -34,6 +37,10 @@ export function ProductShareRow({ url, title }: Props) {
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+      void alert({
+        title: "คัดลอกไม่สำเร็จ",
+        message: "เบราว์เซอร์ไม่อนุญาตให้คัดลอก หรือต้องใช้ HTTPS — ลองเลือกลิงก์แล้วกดคัดลอกด้วยตนเอง",
+      });
     }
   }
 

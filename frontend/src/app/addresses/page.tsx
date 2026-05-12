@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAppModal } from "@/components/AppModalProvider";
 import {
   createUserAddress,
   deleteUserAddress,
@@ -35,6 +36,7 @@ function emptyForm() {
 
 export default function AddressesPage() {
   const router = useRouter();
+  const { confirm } = useAppModal();
   const [rows, setRows] = useState<UserAddress[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -188,7 +190,14 @@ export default function AddressesPage() {
   }
 
   async function remove(id: string) {
-    if (!window.confirm("ลบที่อยู่นี้?")) return;
+    const ok = await confirm({
+      title: "ลบที่อยู่",
+      message: "ลบที่อยู่นี้?",
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     const t = getToken();
     if (!t) return;
     setErr(null);

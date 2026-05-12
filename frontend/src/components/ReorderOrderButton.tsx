@@ -5,15 +5,24 @@ import { useState } from "react";
 
 import { getToken, type OrderPublic } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
+import { useAppModal } from "@/components/AppModalProvider";
 
 type Props = { order: OrderPublic };
 
 export function ReorderOrderButton({ order }: Props) {
   const router = useRouter();
+  const { confirm } = useAppModal();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function reorder() {
+    const ok = await confirm({
+      title: "สั่งซ้ำ",
+      message: `เพิ่มสินค้าทั้งหมดจากออเดอร์ #${order.id.slice(0, 8)}… ลงตะกร้า (${order.items.length} รายการ)?`,
+      confirmLabel: "เพิ่มลงตะกร้า",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     if (!t) return;
     setBusy(true);

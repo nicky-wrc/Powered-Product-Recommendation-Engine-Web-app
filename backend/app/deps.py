@@ -36,6 +36,27 @@ def get_current_user(
     return user
 
 
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+        )
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        user_id = uuid.UUID(str(sub))
+    except (JWTError, ValueError, TypeError):
+        return None
+    return db.get(User, user_id)
+
+
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Admin only")

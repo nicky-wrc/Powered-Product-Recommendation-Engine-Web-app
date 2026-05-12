@@ -13,6 +13,7 @@ from app.models.interaction import Interaction
 from app.models.order import Order
 from app.models.product import Product
 from app.models.product_image import ProductImage
+from app.models.product_review import ProductReview
 from app.models.user import User
 from app.services.product_gallery import sync_product_cover
 from app.upload_paths import PRODUCT_IMAGES_DIR
@@ -253,6 +254,20 @@ def admin_reorder_product_images(
     db.commit()
     db.refresh(p)
     return _admin_product_detail(db, p)
+
+
+@router.delete("/products/{product_id}/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_product_review(
+    product_id: UUID,
+    review_id: UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> None:
+    row = db.get(ProductReview, review_id)
+    if row is None or row.product_id != product_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

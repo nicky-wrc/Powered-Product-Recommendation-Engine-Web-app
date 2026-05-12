@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAppModal } from "@/components/AppModalProvider";
 import { fetchProduct, formatNetworkError, isLocalUploadImageUrl, productImageUrl } from "@/lib/api";
 import {
   clearCompare,
@@ -31,6 +32,7 @@ function TagsCell({ tags }: { tags: string[] | null }) {
 }
 
 export default function ComparePage() {
+  const { confirm } = useAppModal();
   const [items, setItems] = useState<CompareItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -76,6 +78,30 @@ export default function ComparePage() {
     }
   }
 
+  async function removeCol(id: string, name: string) {
+    const ok = await confirm({
+      title: "เอาออกจากการเปรียบเทียบ",
+      message: `เอา "${name}" ออกจากตารางเปรียบเทียบ?`,
+      confirmLabel: "เอาออก",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
+    removeFromCompare(id);
+  }
+
+  async function clearAllCompare() {
+    const ok = await confirm({
+      title: "ล้างรายการเปรียบเทียบ",
+      message: "ลบสินค้าทั้งหมดออกจากการเปรียบเทียบ?",
+      confirmLabel: "ล้างทั้งหมด",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
+    clearCompare();
+  }
+
   const cols = items;
 
   return (
@@ -102,7 +128,7 @@ export default function ComparePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => clearCompare()}
+                  onClick={() => void clearAllCompare()}
                   className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-800 transition hover:bg-red-100 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
                 >
                   ล้างทั้งหมด
@@ -163,7 +189,7 @@ export default function ComparePage() {
                           </Link>
                           <button
                             type="button"
-                            onClick={() => removeFromCompare(c.id)}
+                            onClick={() => void removeCol(c.id, c.name)}
                             className="text-xs font-medium text-red-600 underline dark:text-red-400"
                           >
                             เอาออก

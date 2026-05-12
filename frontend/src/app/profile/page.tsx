@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAppModal } from "@/components/AppModalProvider";
 import {
   changePassword,
   deleteProfileAvatar,
@@ -27,6 +28,7 @@ function dash(s: string | null | undefined) {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { confirm } = useAppModal();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -216,6 +218,14 @@ export default function ProfilePage() {
   }
 
   async function removeAvatar() {
+    const ok = await confirm({
+      title: "ลบรูปโปรไฟล์",
+      message: "ต้องการลบรูปโปรไฟล์และกลับไปใช้ตัวอักษรย่อแทนหรือไม่?",
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
     const t = getToken();
     if (!t) return;
     setAvatarErr(null);

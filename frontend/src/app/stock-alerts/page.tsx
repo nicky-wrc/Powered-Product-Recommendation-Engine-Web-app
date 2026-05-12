@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAppModal } from "@/components/AppModalProvider";
 import {
   clearStockAlerts,
   getStockAlerts,
@@ -14,6 +15,7 @@ import {
 
 export default function StockAlertsPage() {
   const [items, setItems] = useState<StockAlertEntry[]>([]);
+  const { confirm } = useAppModal();
 
   useEffect(() => {
     const sync = () => queueMicrotask(() => setItems(getStockAlerts()));
@@ -21,6 +23,30 @@ export default function StockAlertsPage() {
     window.addEventListener(STOCK_ALERTS_CHANGED_EVENT, sync);
     return () => window.removeEventListener(STOCK_ALERTS_CHANGED_EVENT, sync);
   }, []);
+
+  async function removeOne(productId: string, name: string) {
+    const ok = await confirm({
+      title: "ลบการแจ้งเตือน",
+      message: `หยุดแจ้งเตือนสต็อกสำหรับ "${name}"?`,
+      confirmLabel: "ลบ",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
+    removeStockAlert(productId);
+  }
+
+  async function clearAll() {
+    const ok = await confirm({
+      title: "ล้างทั้งหมด",
+      message: "ลบรายการแจ้งเตือนสต็อกทั้งหมดในรายการนี้?",
+      confirmLabel: "ล้างทั้งหมด",
+      cancelLabel: "ยกเลิก",
+      variant: "danger",
+    });
+    if (!ok) return;
+    clearStockAlerts();
+  }
 
   return (
     <div className="min-h-screen">
@@ -36,7 +62,7 @@ export default function StockAlertsPage() {
           {items.length > 0 ? (
             <button
               type="button"
-              onClick={() => clearStockAlerts()}
+              onClick={() => void clearAll()}
               className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm font-semibold text-stone-800 transition hover:bg-stone-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-200 dark:hover:bg-zinc-800"
             >
               ล้างทั้งหมด
@@ -63,7 +89,7 @@ export default function StockAlertsPage() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => removeStockAlert(x.product_id)}
+                  onClick={() => void removeOne(x.product_id, x.name)}
                   className="shrink-0 text-sm font-medium text-red-600 hover:underline dark:text-red-400"
                 >
                   ลบ

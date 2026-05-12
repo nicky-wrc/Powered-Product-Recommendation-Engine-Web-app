@@ -6,13 +6,22 @@ import { useState } from "react";
 import type { Product } from "@/lib/api";
 import { getToken, postEvent } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
+import { useAppModal } from "@/components/AppModalProvider";
 
 type Props = { product: Pick<Product, "id" | "name" | "price" | "image_url"> };
 
 export function ProductActions({ product }: Props) {
   const [msg, setMsg] = useState<string | null>(null);
+  const { confirm } = useAppModal();
 
   async function addToCart() {
+    const ok = await confirm({
+      title: "เพิ่มลงตะกร้า",
+      message: `เพิ่ม "${product.name}" จำนวน 1 ชิ้น ลงตะกร้า?`,
+      confirmLabel: "เพิ่ม",
+      cancelLabel: "ยกเลิก",
+    });
+    if (!ok) return;
     const t = getToken();
     setMsg(null);
     try {
