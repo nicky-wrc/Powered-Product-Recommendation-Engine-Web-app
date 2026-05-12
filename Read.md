@@ -609,7 +609,7 @@ Week 7: Deploy
 Week 8: Polish
 ├── LLM smart search
 ├── Performance optimization
-└── README + Demo video
+└── README + walkthrough video
 ```
 
 ---

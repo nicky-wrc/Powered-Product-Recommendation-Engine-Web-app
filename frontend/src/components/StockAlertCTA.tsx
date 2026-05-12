@@ -63,7 +63,7 @@ export function StockAlertCTA({ product }: Props) {
           <Link href="/settings/notifications" className="font-semibold underline">
             ตั้งค่าการแจ้งเตือน
           </Link>{" "}
-          — ระบบยังเก็บรายการรอแจ้งในเครื่องนี้ได้ แต่เวอร์ชันเดโมยังไม่ส่งอีเมล
+          — ระบบยังเก็บรายการรอแจ้งในเครื่องนี้ได้; การแจ้งทางอีเมลจะใช้ได้เมื่อเชื่อมระบบส่งเมล
         </p>
       ) : null}
       <button

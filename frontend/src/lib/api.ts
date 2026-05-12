@@ -38,6 +38,8 @@ export type Product = {
   category: string | null;
   tags: string[] | null;
   image_url: string | null;
+  /** YouTube / Vimeo watch URL; PDP converts to embed. */
+  video_url?: string | null;
   /** Ordered gallery for PDP; list APIs may repeat [image_url] for compatibility. */
   image_urls?: string[];
   stock: number;
@@ -594,6 +596,7 @@ export type AdminProductCreate = {
   category?: string | null;
   tags?: string[] | null;
   image_url?: string | null;
+  video_url?: string | null;
   stock?: number;
 };
 
@@ -804,7 +807,7 @@ export async function postOrder(
   items: { product_id: string; quantity: number }[],
   options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
-  const { payment_method = "demo", gift_wrap = false, gift_message = null } = options;
+  const { payment_method = "direct", gift_wrap = false, gift_message = null } = options;
   const r = await fetch(`${API_BASE}/api/orders`, {
     method: "POST",
     headers: {

@@ -55,9 +55,9 @@ export function ProductExploreTrustSection({ category }: Props) {
 
         <div className="space-y-4 bg-stone-50/80 p-6 dark:bg-zinc-900/40">
           <div>
-            <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">ทำไมถึงไว้ใจร้านเดโมนี้</h2>
+            <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">ทำไมถึงเลือกช้อปกับเรา</h2>
             <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-              ข้อความด้านล่างใช้ประกอบ UI เท่านั้น — ไม่ใช่การรับรองจากบุคคลที่สาม
+              สรุปการชำระเงินและบัญชีลูกค้า — รายละเอียดขึ้นกับการตั้งค่าร้านและผู้ให้บริการที่คุณต่อเชื่อม
             </p>
           </div>
           <ul className="space-y-3 text-sm text-stone-700 dark:text-stone-300">
@@ -95,9 +95,9 @@ export function ProductExploreTrustSection({ category }: Props) {
                 </svg>
               </span>
               <span>
-                <span className="font-semibold text-stone-900 dark:text-stone-100">เช็คเอาต์เดโม</span>
+                <span className="font-semibold text-stone-900 dark:text-stone-100">สั่งซื้อโดยตรง</span>
                 <span className="mt-0.5 block text-stone-600 dark:text-stone-400">
-                  สร้างออเดอร์และหักสต็อกในสภาพแวดล้อมสาธิต — ไม่มีการเรียกเก็บเงินจริงเมื่อเลือกโหมดเดโม
+                  เมื่อไม่ใช้เกตเวย์ออนไลน์ ระบบสร้างออเดอร์และหักสต็อก — ชำระนอกระบบ (โอน / เก็บปลายทาง ฯลฯ) ตามที่ร้านกำหนด
                 </span>
               </span>
             </li>
@@ -117,7 +117,7 @@ export function ProductExploreTrustSection({ category }: Props) {
               <span>
                 <span className="font-semibold text-stone-900 dark:text-stone-100">บัญชีและประวัติคำสั่งซื้อ</span>
                 <span className="mt-0.5 block text-stone-600 dark:text-stone-400">
-                  ล็อกอินเพื่อซิงก์ตะกร้าและดูคำสั่งซื้อในที่เดียว — ข้อมูลโปรไฟล์ตามที่ตั้งในเดโม
+                  ล็อกอินเพื่อซิงก์ตะกร้าและดูคำสั่งซื้อในที่เดียว — โปรไฟล์ถูกเก็บในระบบบัญชีของคุณ
                 </span>
               </span>
             </li>

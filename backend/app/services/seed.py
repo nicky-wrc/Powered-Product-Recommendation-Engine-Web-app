@@ -17,6 +17,7 @@ _SAMPLE: list[dict] = [
         "tags": ["sport", "running", "urban"],
         "image_url": _U.format(path="photo-1542291026-7eec264c27ff"),
         "stock": 40,
+        "video_url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
     },
     {
         "name": "Court Classic Lo",
@@ -309,7 +310,7 @@ _SAMPLE: list[dict] = [
         "image_url": _U.format(path="photo-1485955900006-10f4d324d411"),
         "stock": 72,
     },
-    # Fashion / jewelry (Thai category label used in demo UI)
+    # Fashion / jewelry (Thai category label used in storefront)
     {
         "name": "Layered Chain Necklace",
         "description": "Stainless steel layered chains, hypoallergenic.",
@@ -396,6 +397,7 @@ def insert_missing_demo_products(db: Session) -> int:
                 tags=s["tags"],
                 image_url=s["image_url"],
                 stock=int(s["stock"]),
+                video_url=s.get("video_url"),
             )
         )
     if not to_add:
@@ -422,6 +424,26 @@ def sync_demo_catalog_images(db: Session) -> int:
         if p.image_url == url:
             continue
         p.image_url = url
+        updated += 1
+    if updated:
+        db.commit()
+    return updated
+
+
+def sync_demo_product_videos(db: Session) -> int:
+    """Set video_url from catalog sample for known demo product names (fills new column on existing DBs)."""
+    by_name = {s["name"]: s["video_url"] for s in _SAMPLE if s.get("video_url")}
+    if not by_name:
+        return 0
+    rows = db.scalars(select(Product).where(Product.name.in_(list(by_name.keys())))).all()
+    updated = 0
+    for p in rows:
+        want = by_name.get(p.name)
+        if not want:
+            continue
+        if p.video_url == want:
+            continue
+        p.video_url = want
         updated += 1
     if updated:
         db.commit()

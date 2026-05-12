@@ -23,7 +23,7 @@ export function FreeShippingProgress({ subtotal }: Props) {
               <span className="text-emerald-700 dark:text-emerald-400">คุณถึงยอดฟรีค่าส่งแล้ว</span>
               <span className="font-normal text-teal-800/90 dark:text-teal-200/90">
                 {" "}
-                (สำหรับคำสั่งซื้อจาก <span className="tabular-nums">${threshold.toFixed(2)}</span> ขึ้นไปในเดโมนี้)
+                (สำหรับคำสั่งซื้อจาก <span className="tabular-nums">${threshold.toFixed(2)}</span> ขึ้นไปตามที่ร้านกำหนด)
               </span>
             </>
           ) : (
@@ -60,8 +60,8 @@ export function FreeShippingProgress({ subtotal }: Props) {
       </div>
       <p className="mt-2 text-xs text-teal-800/80 dark:text-teal-300/80">
         {qualified
-          ? "ในสตอร์เดโมนี้เป็นข้อความจำลอง — ยังไม่ได้คิดค่าส่งจริงจาก carrier"
-          : `ยอดขั้นต่ำเดโม: $${threshold.toFixed(2)} · ปรับได้ที่ NEXT_PUBLIC_FREE_SHIPPING_MIN_SUBTOTAL`}
+          ? "ค่าขนส่งจริงอาจแตกต่างตามพื้นที่และผู้ให้บริการ — ใช้เกณฑ์โปรโมชันนี้เป็นข้อความจากร้าน"
+          : `ยอดขั้นต่ำสำหรับโปรฟรีค่าส่ง: $${threshold.toFixed(2)} · ปรับที่ NEXT_PUBLIC_FREE_SHIPPING_MIN_SUBTOTAL`}
       </p>
     </div>
   );

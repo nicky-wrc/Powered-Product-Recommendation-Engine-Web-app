@@ -11,7 +11,7 @@ from app.models.user import User
 def ensure_bootstrap_admin(db: Session) -> None:
     """
     If BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are set, create or update that user
-    as is_admin=True. Intended for local/demo; do not use real passwords in production .env.
+    as is_admin=True. Intended for local development; use strong, unique credentials in production.
     """
     email_raw = (settings.bootstrap_admin_email or "").strip().lower()
     password = settings.bootstrap_admin_password

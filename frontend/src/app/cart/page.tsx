@@ -210,8 +210,8 @@ export default function CartPage() {
     const subtotal = cartSubtotal(lines);
     const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
-      title: "ยืนยันสั่งซื้อ (demo)",
-      message: `สั่งซื้อ ${lines.length} รายการ ยอดรวมประมาณ $${orderTotal.toFixed(2)} (ชำระแบบเดโม — ไม่ตัดบัตรจริง)`,
+      title: "ยืนยันสั่งซื้อ",
+      message: `สั่งซื้อ ${lines.length} รายการ ยอดรวมประมาณ $${orderTotal.toFixed(2)} (ชำระนอกเกตเวย์ — ไม่มีการตัดบัตรออนไลน์ในขั้นตอนนี้)`,
       confirmLabel: "ยืนยันสั่งซื้อ",
       cancelLabel: "ยกเลิก",
     });
@@ -223,7 +223,7 @@ export default function CartPage() {
         token,
         lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
         {
-          payment_method: "demo",
+          payment_method: "direct",
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
         },
@@ -252,7 +252,7 @@ export default function CartPage() {
     const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
       title: "ไปชำระด้วย Stripe",
-      message: `คุณจะถูกพาไปหน้าชำระเงินทดสอบ (test mode)\nยอดประมาณ $${orderTotal.toFixed(2)}`,
+      message: `คุณจะถูกพาไปชำระผ่าน Stripe${"\n"}ยอดประมาณ $${orderTotal.toFixed(2)} (หากใช้ test key จะเป็นโหมดทดสอบ)`,
       confirmLabel: "ดำเนินการต่อ",
       cancelLabel: "ยกเลิก",
     });
@@ -286,9 +286,10 @@ export default function CartPage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Cart</h1>
           <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-            Signed-in users: cart syncs to the server. Pay with <strong>Stripe</strong> (test mode) when configured,
-            or use <strong>demo checkout</strong> for classwork without keys. Both paths create an order, update stock,
-            and record purchase signals. Guests: browser storage until you log in (then merged to the server).
+            Signed-in users: cart syncs to the server through our API. Pay with <strong>Stripe Checkout</strong> when
+            configured, or place a <strong>direct order</strong> (order and stock updates without an online card charge
+            — settle payment per your store policy). Both flows create an order and update inventory. Guests: cart stays
+            in the browser until you sign in (then merged server-side).
           </p>
         </div>
 
@@ -412,7 +413,7 @@ export default function CartPage() {
                         Gift wrapping (+${GIFT_WRAP_FEE.toFixed(2)})
                       </span>
                       <span className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400">
-                        One flat fee per order — included in demo checkout and Stripe total.
+                        One flat fee per order — included in the order total for direct checkout and Stripe alike.
                       </span>
                     </span>
                   </label>
@@ -454,7 +455,7 @@ export default function CartPage() {
                           onClick={() => void payWithStripe()}
                           className="rounded-xl bg-stone-900 px-8 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-stone-800 disabled:opacity-60 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white"
                         >
-                          {busy ? "Redirecting…" : "Pay with card (Stripe test)"}
+                          {busy ? "Redirecting…" : "Pay with Stripe"}
                         </button>
                       ) : null}
                       <button
@@ -463,7 +464,7 @@ export default function CartPage() {
                         onClick={() => void checkout()}
                         className="rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-8 py-3 text-sm font-semibold text-white shadow-lg shadow-teal-600/25 transition hover:from-teal-500 hover:to-emerald-500 disabled:opacity-60"
                       >
-                        {busy ? "Placing order…" : "Place order (demo, no payment)"}
+                        {busy ? "Placing order…" : "Place order (no online payment)"}
                       </button>
                     </div>
                     <p className="text-xs text-stone-500 dark:text-stone-400">

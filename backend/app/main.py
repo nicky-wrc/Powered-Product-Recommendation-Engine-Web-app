@@ -30,6 +30,7 @@ from app.services.seed import (
     repair_legacy_image_urls,
     seed_products_if_empty,
     sync_demo_catalog_images,
+    sync_demo_product_videos,
 )
 from app.upload_paths import PRODUCT_IMAGES_DIR, PROFILE_IMAGES_DIR, REVIEW_IMAGES_DIR, UPLOADS_ROOT
 
@@ -45,6 +46,7 @@ async def lifespan(_app: FastAPI):
             insert_missing_demo_products(db)
             repair_legacy_image_urls(db)
             sync_demo_catalog_images(db)
+            sync_demo_product_videos(db)
             backfill_product_galleries_from_legacy_image_url(db)
             ensure_bootstrap_admin(db)
         finally:

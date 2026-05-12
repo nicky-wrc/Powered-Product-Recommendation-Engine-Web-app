@@ -33,6 +33,7 @@ type FormDraft = {
   category: string;
   tags: string[];
   image_url: string;
+  video_url: string;
   stock: string;
 };
 
@@ -72,6 +73,7 @@ const emptyDraft: FormDraft = {
   category: "",
   tags: [],
   image_url: "",
+  video_url: "",
   stock: "",
 };
 
@@ -172,6 +174,7 @@ export function AdminProductManager({ token }: Props) {
       category: prod.category ?? "",
       tags: [...(prod.tags ?? [])],
       image_url: prod.image_url ?? "",
+      video_url: prod.video_url ?? "",
       stock: String(prod.stock),
     });
     setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
@@ -187,6 +190,7 @@ export function AdminProductManager({ token }: Props) {
       category: p.category ?? "",
       tags: [...(p.tags ?? [])],
       image_url: p.image_url ?? "",
+      video_url: p.video_url ?? "",
       stock: String(p.stock),
     });
     setEditGallery([]);
@@ -236,6 +240,7 @@ export function AdminProductManager({ token }: Props) {
         category: createForm.category.trim() || null,
         tags: tagsForApi(createForm.tags),
         image_url,
+        video_url: createForm.video_url.trim() || null,
         stock,
       });
       let galleryError: string | null = null;
@@ -289,6 +294,7 @@ export function AdminProductManager({ token }: Props) {
         category: form.category.trim() || null,
         tags: tagsForApi(form.tags),
         stock,
+        video_url: form.video_url.trim() || null,
       };
       if (editGallery.length === 0) {
         body.image_url = form.image_url.trim() || null;
@@ -571,6 +577,20 @@ export function AdminProductManager({ token }: Props) {
                   hint="เพิ่มทีละแท็กด้วย Enter หรือ comma — ลบด้วย × หรือ Backspace เมื่อช่องว่าง — วางหลายคำคั่นด้วย comma ได้ (สูงสุด 30 แท็ก)"
                 />
               </div>
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              ลิงก์วิดีโอ (YouTube / Vimeo — ไม่บังคับ)
+              <input
+                type="url"
+                inputMode="url"
+                value={createForm.video_url}
+                onChange={(e) => setCreateForm((d) => ({ ...d, video_url: e.target.value }))}
+                placeholder="https://www.youtube.com/watch?v=… หรือ https://vimeo.com/…"
+                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+              <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-400">
+                ว่างได้ — ถ้ากรอกจะฝังบนหน้ารายละเอียดสินค้า (รองรับ youtube.com, youtu.be, vimeo.com)
+              </p>
             </label>
             <div className="sm:col-span-2 space-y-2 rounded-lg border border-stone-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-950/40">
               <p className="text-xs font-medium text-stone-700 dark:text-stone-200">รูปสินค้า (หลายรูปได้)</p>
@@ -855,6 +875,19 @@ export function AdminProductManager({ token }: Props) {
                           hint="Enter / comma เพิ่มแท็ก · วางข้อความหลายแท็กได้"
                         />
                       </div>
+                      <label className="sm:col-span-2 block">
+                        <span className="mb-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">
+                          ลิงก์วิดีโอ (YouTube / Vimeo)
+                        </span>
+                        <input
+                          type="url"
+                          inputMode="url"
+                          value={form.video_url}
+                          onChange={(e) => setForm((f) => ({ ...f, video_url: e.target.value }))}
+                          placeholder="https://…"
+                          className="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
                       {galleryLoading ? (
                         <p className="text-xs text-stone-500 sm:col-span-2 dark:text-stone-400">กำลังโหลดแกลเลอรี่…</p>
                       ) : null}

@@ -13,7 +13,7 @@ class OrderLineIn(BaseModel):
 
 class OrderCreate(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
-    payment_method: str | None = Field(default="demo", max_length=64)
+    payment_method: str | None = Field(default="direct", max_length=64)
     gift_wrap: bool = False
     gift_message: str | None = Field(default=None, max_length=500)
 

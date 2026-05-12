@@ -18,6 +18,7 @@ class ProductPublic(BaseModel):
     image_url: str | None
     image_urls: list[str] = Field(default_factory=list)
     stock: int
+    video_url: str | None = None
 
 
 def product_public(p: Product, *, gallery_urls: list[str] | None = None) -> ProductPublic:
@@ -35,6 +36,7 @@ def product_public(p: Product, *, gallery_urls: list[str] | None = None) -> Prod
         image_url=p.image_url,
         image_urls=urls,
         stock=p.stock,
+        video_url=p.video_url,
     )
 
 
@@ -96,7 +98,18 @@ class ProductCreate(BaseModel):
     category: str | None = Field(None, max_length=100)
     tags: list[str] | None = None
     image_url: str | None = Field(None, max_length=2048)
+    video_url: str | None = Field(None, max_length=2048)
     stock: int = Field(default=0, ge=0)
+
+    @field_validator("image_url", "video_url", mode="before")
+    @classmethod
+    def _strip_optional_url(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s or None
+        return v
 
     @field_validator("tags")
     @classmethod
@@ -114,7 +127,18 @@ class ProductUpdate(BaseModel):
     category: str | None = Field(None, max_length=100)
     tags: list[str] | None = None
     image_url: str | None = Field(None, max_length=2048)
+    video_url: str | None = Field(None, max_length=2048)
     stock: int | None = Field(None, ge=0)
+
+    @field_validator("image_url", "video_url", mode="before")
+    @classmethod
+    def _strip_optional_url(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s or None
+        return v
 
     @field_validator("tags")
     @classmethod

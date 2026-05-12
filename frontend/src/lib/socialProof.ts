@@ -1,8 +1,8 @@
 /**
- * Deterministic “viewing now” count for demo social proof (product detail).
- * Not real traffic — stable per product id for SSR and refresh.
+ * Illustrative “viewing now” count for product detail (deterministic per id for SSR).
+ * Not sourced from analytics — replace with real metrics when available.
  */
-export function demoConcurrentViewers(productId: string): number {
+export function concurrentViewersIllustration(productId: string): number {
   let h = 2166136261;
   for (let i = 0; i < productId.length; i++) {
     h ^= productId.charCodeAt(i);

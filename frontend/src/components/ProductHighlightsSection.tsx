@@ -33,7 +33,7 @@ export function ProductHighlightsSection({ product, reviewCount, reviewAverage }
       </>
     ) : (
       <>
-        ยังไม่มีรีวิวสาธิตสำหรับสินค้านี้ — ลูกค้าที่เคยสั่งซื้อและออเดอร์สำเร็จสามารถรีวิวได้จาก{" "}
+        ยังไม่มีรีวิวสำหรับสินค้านี้ — ลูกค้าที่เคยสั่งซื้อและออเดอร์สำเร็จสามารถรีวิวได้จาก{" "}
         <a href="#product-reviews" className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">
           การ์ดด้านล่าง
         </a>

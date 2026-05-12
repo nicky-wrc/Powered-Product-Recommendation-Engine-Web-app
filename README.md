@@ -1,6 +1,6 @@
 # AI-Powered Product Recommendation Engine (Web App)
 
-Full-stack demo application for an e-commerce style catalog with behavior tracking and multiple recommendation strategies. The stack pairs a **Next.js** storefront and admin UI with a **FastAPI** backend, **PostgreSQL** (with pgvector image in Docker for local dev), and optional **Redis** for caching recommendation responses.
+Full-stack e-commerce application with a browsable catalog, behavior tracking, and multiple recommendation strategies. The stack pairs a **Next.js** storefront and admin UI with a **FastAPI** backend, **PostgreSQL** (with pgvector image in Docker for local dev), and optional **Redis** for caching recommendation responses.
 
 ## Features
 
@@ -88,7 +88,7 @@ cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-On startup (unless `SKIP_DB_BOOTSTRAP=1`), the app creates tables, may seed demo products, repair legacy image URLs, and optionally create a bootstrap admin user if the `BOOTSTRAP_ADMIN_*` variables are set.
+On startup (unless `SKIP_DB_BOOTSTRAP=1`), the app creates tables, may seed starter catalog rows, repair legacy image URLs, and optionally create a bootstrap admin user if the `BOOTSTRAP_ADMIN_*` variables are set.
 
 Interactive docs: `http://127.0.0.1:8000/docs`
 
@@ -126,7 +126,7 @@ See `backend/.env.example` and `frontend/.env.local.example` for comments.
 - `GET /api/products/categories` — Distinct non-empty categories
 - `GET /api/products/{id}` — Product with similar and bought-together lists
 - `GET /health` and `GET /health/ready` — Liveness and readiness (database, Redis)
-- `POST /api/orders` — Create order (demo `payment_method`), decrement stock, clear cart
+- `POST /api/orders` — Create order (default `payment_method` e.g. `direct` for non-Stripe checkout), decrement stock, clear cart
 - `POST /api/payments/create-checkout-session` — Start Stripe Checkout (needs `STRIPE_SECRET_KEY`); returns `{ url }`
 - `POST /api/payments/sync-session` — After Stripe success redirect, confirm payment and create order (handy without webhook)
 - `POST /api/payments/webhook` — Stripe webhook for `checkout.session.completed` (set `STRIPE_WEBHOOK_SECRET`)
@@ -136,8 +136,8 @@ See `backend/.env.example` and `frontend/.env.local.example` for comments.
 
 1. Keys: [Stripe Dashboard → API keys (test)](https://dashboard.stripe.com/test/apikeys).
 2. `backend/.env`: `STRIPE_SECRET_KEY=sk_test_...`, and `PUBLIC_APP_URL` = Next.js URL (default `http://localhost:3000`). For webhooks locally: `stripe listen --forward-to localhost:8000/api/payments/webhook` and set `STRIPE_WEBHOOK_SECRET` to the signing secret.
-3. Cart: **Pay with card (Stripe test)**; [test cards](https://stripe.com/docs/testing) e.g. `4242 4242 4242 4242`.
-4. After pay you land on `/orders`; the UI calls **sync-session** so orders appear without a webhook. **Place order (demo, no payment)** stays available for classrooms without Stripe.
+3. Cart: **Pay with Stripe** (use [test cards](https://stripe.com/docs/testing) with test keys); or **Place order (no online payment)** for direct checkout when you are not routing cards through Stripe.
+4. After pay you land on `/orders`; the UI calls **sync-session** so orders appear without a webhook. Direct checkout remains available when Stripe is not configured.
 
 ## Scripts
 

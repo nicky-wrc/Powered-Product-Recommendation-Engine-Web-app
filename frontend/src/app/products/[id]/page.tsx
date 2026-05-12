@@ -9,6 +9,7 @@ import { ProductExploreTrustSection } from "@/components/ProductExploreTrustSect
 import { ProductHighlightsSection } from "@/components/ProductHighlightsSection";
 import { ProductFaqSection } from "@/components/ProductFaqSection";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { ProductMediaSpotlightSection } from "@/components/ProductMediaSpotlightSection";
 import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
 import { ProductRecommendationGridSection } from "@/components/ProductRecommendationGridSection";
 import { ProductRecentSection } from "@/components/ProductRecentSection";
@@ -22,8 +23,9 @@ import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
 import { fetchProduct, productGalleryUrls } from "@/lib/api";
-import { demoConcurrentViewers } from "@/lib/socialProof";
+import { concurrentViewersIllustration } from "@/lib/socialProof";
 import { absoluteUrl } from "@/lib/siteUrl";
+import { getVideoEmbedInfo } from "@/lib/videoEmbed";
 import { cache } from "react";
 
 type Props = { params: Promise<{ id: string }> };
@@ -102,6 +104,15 @@ export default async function ProductDetailPage({ params }: Props) {
       ratingCount: review_summary.count,
     };
   }
+  const videoEmbed = p.video_url?.trim() ? getVideoEmbedInfo(p.video_url.trim()) : null;
+  if (videoEmbed) {
+    jsonLd.subjectOf = {
+      "@type": "VideoObject",
+      name: `${p.name} — product video`,
+      description: p.description ?? undefined,
+      embedUrl: videoEmbed.src,
+    };
+  }
 
   return (
     <div className="min-h-screen">
@@ -162,12 +173,12 @@ export default async function ProductDetailPage({ params }: Props) {
               <div>
                 <p className="text-stone-800 dark:text-stone-200">
                   <span className="font-semibold tabular-nums text-amber-900 dark:text-amber-200">
-                    {demoConcurrentViewers(p.id)}
+                    {concurrentViewersIllustration(p.id)}
                   </span>{" "}
                   people are viewing this item right now.
                 </p>
                 <p className="mt-1 text-[11px] text-stone-500 dark:text-stone-500">
-                  Demo activity indicator — not connected to real analytics.
+                  Illustrative indicator — connect your analytics to drive this from live traffic.
                 </p>
               </div>
             </div>
@@ -208,12 +219,14 @@ export default async function ProductDetailPage({ params }: Props) {
 
         <ProductFaqSection />
 
+        <ProductMediaSpotlightSection productName={p.name} videoUrl={p.video_url} />
+
         <ProductExploreTrustSection category={p.category} />
 
         {bought_together.length > 0 ? (
           <ProductRecommendationGridSection
             title="มักซื้อคู่กัน"
-            description="สินค้าที่ลูกค้ามักสั่งร่วมกับรายการนี้ — จากออเดอร์จริงในร้านเดโม"
+            description="สินค้าที่ลูกค้ามักสั่งร่วมกับรายการนี้ — คำนวณจากออเดอร์ในระบบของเรา"
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {bought_together.map((bp) => (

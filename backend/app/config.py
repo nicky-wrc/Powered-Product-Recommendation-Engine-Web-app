@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     # When true (default), allow dev Origins: localhost/127.0.0.1/[::1] (any port) + 192.168.* / 10.* LAN.
     cors_allow_lan_regex: bool = True
-    # Optional: auto-create or promote admin on startup (local/demo — avoid real secrets in production).
+    # Optional: auto-create or promote admin on startup (local development — avoid real secrets in production).
     bootstrap_admin_email: str | None = None
     bootstrap_admin_password: str | None = None
     bootstrap_admin_name: str | None = None

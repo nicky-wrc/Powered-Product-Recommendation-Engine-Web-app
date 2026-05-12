@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(getSiteOrigin()),
-  title: "NickyShopEngine — Recommendation MVP",
-  description: "E‑commerce MVP with personalized recommendations",
+  title: "NickyShopEngine — Smart storefront",
+  description: "E‑commerce with personalized recommendations and a full product API",
 };
 
 export default function RootLayout({

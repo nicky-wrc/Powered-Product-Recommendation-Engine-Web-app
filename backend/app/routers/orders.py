@@ -31,7 +31,7 @@ def create_order(
             db,
             user.id,
             dict(qty_map),
-            payment_method=body.payment_method or "demo",
+            payment_method=body.payment_method or "direct",
             stripe_checkout_session_id=None,
             gift_wrap=body.gift_wrap,
             gift_message=body.gift_message,

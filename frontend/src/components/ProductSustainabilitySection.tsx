@@ -3,7 +3,7 @@ import type { Product } from "@/lib/api";
 
 type Props = { product: Pick<Product, "tags" | "category" | "name" | "description"> };
 
-/** แสดงเมื่อ hero มี Sustainability badge — ขยายความแบบเดโม */
+/** แสดงเมื่อ hero มี Sustainability badge — ขยายความจากแท็กอัตโนมัติ */
 export function ProductSustainabilitySection({ product }: Props) {
   const label = sustainabilityBadgeLabel(product);
   if (!label) return null;
@@ -24,11 +24,11 @@ export function ProductSustainabilitySection({ product }: Props) {
           </svg>
         </span>
         <div>
-          <h2 className="text-xl font-bold text-emerald-950 dark:text-emerald-100">ความยั่งยืน (ข้อมูลเดโม)</h2>
+          <h2 className="text-xl font-bold text-emerald-950 dark:text-emerald-100">ความยั่งยืน (จากข้อมูลสินค้า)</h2>
           <p className="mt-1 text-sm text-emerald-900/85 dark:text-emerald-200/90">
             สินค้านี้ถูกจัดให้ตรงกับแท็ก{" "}
             <span className="font-semibold tabular-nums">&ldquo;{label}&rdquo;</span> จากคำสำคัญในชื่อ หมวดหมู่ คำอธิบาย
-            หรือแท็ก — ใช้จับคู่แบบตัวอย่างในเดโมเท่านั้น ไม่ใช่ใบรับรองจากบุคคลที่สาม
+            หรือแท็ก — เป็นการจัดประเภทอัตโนมัติ ไม่ใช่ใบรับรองจากบุคคลที่สาม
           </p>
         </div>
       </div>

@@ -56,7 +56,7 @@ export function defaultNotificationPrefs(): NotificationPrefs {
   return { ...DEFAULTS };
 }
 
-/** For features like stock alerts — returns whether user opted in (demo: local only). */
+/** For stock alerts — returns opt-in from browser-stored prefs (not yet synced to server). */
 export function wantsStockAlertEmails(): boolean {
   return getNotificationPrefs().email_stock_alerts;
 }

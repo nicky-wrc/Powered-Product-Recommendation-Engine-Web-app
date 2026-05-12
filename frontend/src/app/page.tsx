@@ -19,7 +19,7 @@ export default async function Home() {
           <div className="absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl dark:bg-emerald-600/10" />
           <div className="relative max-w-2xl space-y-4">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700 dark:text-teal-400">
-              Recommendation MVP
+              NickyShopEngine
             </p>
             <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50 md:text-4xl md:leading-tight">
               Discover products picked for{" "}

@@ -2,7 +2,7 @@ import type { Product } from "@/lib/api";
 
 type Picked = Pick<Product, "tags" | "category" | "name" | "description">;
 
-/** Fixed label if name/category/tags/description matches eco-style keywords (demo). */
+/** Heuristic eco badge from name/category/tags/description — not a third-party certification. */
 export function sustainabilityBadgeLabel(p: Picked): string | null {
   const parts: string[] = [];
   if (p.category) parts.push(p.category);

@@ -56,7 +56,7 @@ export default function StockAlertsPage() {
           <div>
             <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">แจ้งเตือนสต็อก</h1>
             <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-              รายการสินค้าที่รอให้กลับมามีสต็อก — เปิดหน้ารายละเอียดสินค้าอีกครั้งเมื่อมีสต็อก ระบบจะแจ้งบนหน้านั้น (เดโม ไม่ส่งอีเมล)
+              รายการสินค้าที่รอให้กลับมามีสต็อก — เปิดหน้ารายละเอียดสินค้าอีกครั้งเมื่อมีสต็อก ระบบจะแจ้งบนหน้านั้น (ยังไม่ส่งอีเมลอัตโนมัติ)
             </p>
           </div>
           {items.length > 0 ? (

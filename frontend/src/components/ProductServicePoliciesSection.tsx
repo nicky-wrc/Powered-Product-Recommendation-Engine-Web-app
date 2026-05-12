@@ -18,7 +18,7 @@ export function ProductServicePoliciesSection({ product }: Props) {
       <div>
         <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">ข้อมูลสินค้า & นโยบายบริการ</h2>
         <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-          สรุปรายละเอียดสำหรับการตัดสินใจ และเงื่อนไขบริการแบบเดโมร้านค้า
+          สรุปสำหรับการตัดสินใจ และนโยบายบริการมาตรฐานของร้าน — ปรับตามจริงของธุรกิจคุณได้
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export function ProductServicePoliciesSection({ product }: Props) {
           </div>
           <h3 className="mt-3 font-semibold text-stone-900 dark:text-stone-100">การจัดส่ง</h3>
           <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-            จัดส่งภายใน 2–5 วันทำการ (ข้อมูลจำลอง) ค่าจัดส่งคิดตามโซน — ดูรายละเอียดที่หน้าตะกร้าก่อนยืนยันคำสั่งซื้อ
+            จัดส่งภายใน 2–5 วันทำการ ค่าจัดส่งคิดตามโซน — ดูรายละเอียดที่หน้าตะกร้าก่อนยืนยันคำสั่งซื้อ
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -80,7 +80,7 @@ export function ProductServicePoliciesSection({ product }: Props) {
           </div>
           <h3 className="mt-3 font-semibold text-stone-900 dark:text-stone-100">การคืนสินค้า</h3>
           <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
-            รับคืนภายใน 14 วันหลังได้รับสินค้า หากสินค้าอยู่ในสภาพเดิม (ข้อมูลจำลอง — ไม่มีกระบวนการคืนจริงในเดโม)
+            รับคืนภายใน 14 วันหลังได้รับสินค้า หากสินค้าอยู่ในสภาพเดิม — เงื่อนไขเต็มตามนโยบายคืนสินค้าของร้าน
           </p>
         </div>
         <div className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -104,7 +104,7 @@ export function ProductServicePoliciesSection({ product }: Props) {
       </div>
 
       <p className="text-[11px] leading-relaxed text-stone-500 dark:text-stone-500">
-        ข้อความด้านบนเป็นเนื้อหาสาธิตสำหรับ UI เท่านั้น — ไม่ผูกกับนโยบายทางกฎหมายหรือ SLA จริงของร้าน
+        โปรดตรวจสอบนโยบายทางกฎหมายและ SLA ที่เผยแพร่ต่อลูกค้าแยกต่างหาก — ข้อความนี้เป็นค่าเริ่มต้นจากแอป
       </p>
     </section>
   );

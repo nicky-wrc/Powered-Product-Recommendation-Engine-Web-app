@@ -19,6 +19,8 @@ class Product(Base):
     category: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(64)), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    # YouTube or Vimeo page URL; PDP resolves nocookie / Vimeo player embed.
+    video_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     stock: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

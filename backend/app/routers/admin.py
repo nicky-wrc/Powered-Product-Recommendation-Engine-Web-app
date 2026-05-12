@@ -84,7 +84,7 @@ def analytics(
         "total_orders": total_orders,
         "revenue": round(revenue, 2),
         "ctr": round(ctr, 6),
-        "note": "revenue = sum(order.total_amount); purchases = interaction rows (includes pre-order demos).",
+        "note": "revenue = sum(order.total_amount); purchases = interaction rows (includes pre-orders).",
     }
     return data
 
@@ -114,6 +114,7 @@ def create_product(
         category=(body.category.strip() if body.category else None) or None,
         tags=body.tags,
         image_url=(body.image_url.strip() if body.image_url else None) or None,
+        video_url=body.video_url,
         stock=body.stock,
     )
     db.add(p)
@@ -168,6 +169,12 @@ def update_product(
             p.image_url = str(u).strip() or None
     if "stock" in data and data["stock"] is not None:
         p.stock = int(data["stock"])
+    if "video_url" in data:
+        u = data["video_url"]
+        if u is None:
+            p.video_url = None
+        else:
+            p.video_url = str(u).strip() or None
     db.commit()
     db.refresh(p)
     return product_public(p)

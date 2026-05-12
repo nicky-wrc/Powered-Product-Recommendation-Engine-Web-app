@@ -1,5 +1,5 @@
 /**
- * Demo “free shipping” threshold in the same currency as product prices (store uses USD-style $ in UI).
+ * Free-shipping threshold in the same currency as product prices in the UI (USD-style $).
  * Override with NEXT_PUBLIC_FREE_SHIPPING_MIN_SUBTOTAL in .env
  */
 export function getFreeShippingThreshold(): number {
