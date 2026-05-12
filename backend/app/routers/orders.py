@@ -36,6 +36,7 @@ def create_order(
             stripe_checkout_session_id=None,
             gift_wrap=body.gift_wrap,
             gift_message=body.gift_message,
+            promo_code=body.promo_code,
         )
         db.commit()
     except CheckoutError as e:

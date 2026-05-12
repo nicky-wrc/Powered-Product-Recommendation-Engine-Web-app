@@ -110,6 +110,27 @@ def apply_runtime_schema_patches() -> None:
                 """
             ),
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS promo_codes (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    code VARCHAR(64) NOT NULL UNIQUE,
+                    kind VARCHAR(16) NOT NULL,
+                    value NUMERIC(12, 2) NOT NULL,
+                    min_subtotal NUMERIC(14, 2) NULL,
+                    max_uses INTEGER NULL,
+                    uses_count INTEGER NOT NULL DEFAULT 0,
+                    active BOOLEAN NOT NULL DEFAULT true,
+                    valid_from TIMESTAMPTZ NULL,
+                    valid_until TIMESTAMPTZ NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_promo_codes_code ON promo_codes (code);
+                """
+            ),
+        )
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_code VARCHAR(64);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_discount NUMERIC(14,2);"))
 
 
 class Base(DeclarativeBase):

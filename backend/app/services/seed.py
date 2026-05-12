@@ -473,3 +473,26 @@ def repair_legacy_image_urls(db: Session) -> int:
     )
     db.commit()
     return int(result.rowcount or 0)
+
+
+def ensure_welcome_promo(db: Session) -> None:
+    """Seed a demo 10%-off code for cart/checkout testing."""
+
+    from app.models.promo_code import PromoCode
+
+    if db.scalar(select(PromoCode).where(PromoCode.code == "WELCOME10")):
+        return
+    db.add(
+        PromoCode(
+            code="WELCOME10",
+            kind="percent",
+            value=Decimal("10"),
+            min_subtotal=None,
+            max_uses=None,
+            uses_count=0,
+            active=True,
+            valid_from=None,
+            valid_until=None,
+        ),
+    )
+    db.commit()

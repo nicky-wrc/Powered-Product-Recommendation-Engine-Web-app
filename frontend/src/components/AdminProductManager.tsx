@@ -21,6 +21,7 @@ import {
   productImageUrl,
   type Product,
   type ProductGalleryRow,
+  type AdminProductVariantUpsert,
 } from "@/lib/api";
 import Image from "next/image";
 
@@ -114,6 +115,30 @@ type CreatePendingImage = { key: string; url: string };
 
 type VariantDraftRow = { key: string; serverId?: string; label: string; price: string; stock: string };
 
+function variantUpsertsFromDraft(rows: VariantDraftRow[]): AdminProductVariantUpsert[] {
+  const variantParsed = rows
+    .map((r) => {
+      const label = r.label.trim();
+      const price = Number(r.price);
+      const stock = Math.trunc(Number(r.stock));
+      return { serverId: r.serverId, label, price, stock };
+    })
+    .filter((r) => r.label.length > 0);
+
+  for (const r of variantParsed) {
+    if (!Number.isFinite(r.price) || r.price < 0) throw new Error("ราคา variant ไม่ถูกต้อง");
+    if (!Number.isFinite(r.stock) || r.stock < 0) throw new Error("จำนวน variant ไม่ถูกต้อง");
+  }
+
+  return variantParsed.map((r, i) => ({
+    ...(r.serverId ? { id: r.serverId } : {}),
+    label: r.label,
+    price: r.price,
+    stock: r.stock,
+    sort_order: i,
+  }));
+}
+
 function newCreateImageKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
@@ -137,6 +162,7 @@ export function AdminProductManager({ token, mode }: Props) {
   const [createForm, setCreateForm] = useState(emptyDraft);
   /** รูปที่จะผูกกับสินค้าใหม่ (เรียงลำดับ = แกลเลอรี่; รูปแรก = ปก) — ก่อนกดสร้างสินค้า */
   const [createGallery, setCreateGallery] = useState<CreatePendingImage[]>([]);
+  const [createVariants, setCreateVariants] = useState<VariantDraftRow[]>([]);
   const [createUrlDraft, setCreateUrlDraft] = useState("");
   const [form, setForm] = useState(emptyDraft);
   const [editGallery, setEditGallery] = useState<ProductGalleryRow[]>([]);
@@ -313,6 +339,7 @@ export function AdminProductManager({ token, mode }: Props) {
       }
       const galleryUrls = createGallery.map((x) => x.url.trim()).filter(Boolean);
       const image_url = galleryUrls[0] ?? null;
+      const variantsPayload = variantUpsertsFromDraft(createVariants);
       const created = await adminCreateProduct(token, {
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
@@ -323,6 +350,7 @@ export function AdminProductManager({ token, mode }: Props) {
         video_url: createForm.video_url.trim() || null,
         stock,
         ...(flash === "empty" ? {} : flash),
+        ...(variantsPayload.length > 0 ? { variants: variantsPayload } : {}),
       });
       let galleryError: string | null = null;
       try {
@@ -334,6 +362,7 @@ export function AdminProductManager({ token, mode }: Props) {
       }
       setCreateForm(emptyDraft);
       setCreateGallery([]);
+      setCreateVariants([]);
       setCreateUrlDraft("");
       if (galleryError) {
         setErr(
@@ -342,13 +371,17 @@ export function AdminProductManager({ token, mode }: Props) {
         setMsg(null);
       } else {
         setErr(null);
+        const variantNote =
+          variantsPayload.length > 0 ? ` · ${variantsPayload.length} variant` : "";
         setMsg(
           galleryUrls.length > 1
-            ? `สร้างสินค้าแล้ว — แนบรูป ${galleryUrls.length} ใบในแกลเลอรี่`
-            : "สร้างสินค้าแล้ว",
+            ? `สร้างสินค้าแล้ว — แนบรูป ${galleryUrls.length} ใบในแกลเลอรี่${variantNote}`
+            : `สร้างสินค้าแล้ว${variantNote}`,
         );
       }
       await refreshAfterMutation();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "สร้างสินค้าไม่สำเร็จ");
     } finally {
       setBusyId(null);
     }
@@ -388,27 +421,7 @@ export function AdminProductManager({ token, mode }: Props) {
         body.image_url = form.image_url.trim() || null;
       }
 
-      const variantParsed = editVariants
-        .map((r) => {
-          const label = r.label.trim();
-          const price = Number(r.price);
-          const stock = Math.trunc(Number(r.stock));
-          return { serverId: r.serverId, label, price, stock };
-        })
-        .filter((r) => r.label.length > 0);
-
-      for (const r of variantParsed) {
-        if (!Number.isFinite(r.price) || r.price < 0) throw new Error("ราคา variant ไม่ถูกต้อง");
-        if (!Number.isFinite(r.stock) || r.stock < 0) throw new Error("จำนวน variant ไม่ถูกต้อง");
-      }
-
-      body.variants = variantParsed.map((r, i) => ({
-        ...(r.serverId ? { id: r.serverId } : {}),
-        label: r.label,
-        price: r.price,
-        stock: r.stock,
-        sort_order: i,
-      }));
+      body.variants = variantUpsertsFromDraft(editVariants);
 
       await adminUpdateProduct(token, editingId, body);
       setMsg("บันทึกการแก้ไขแล้ว");
@@ -719,6 +732,89 @@ export function AdminProductManager({ token, mode }: Props) {
                 />
               </div>
             </label>
+            <div className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-3 dark:border-zinc-600 dark:bg-zinc-950/40 sm:col-span-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-stone-700 dark:text-stone-200">
+                  Variants (ไม่บังคับ) — สร้างพร้อมสินค้าได้
+                </p>
+                <button
+                  type="button"
+                  disabled={busyId === "__create__" || uploading !== null}
+                  onClick={() =>
+                    setCreateVariants((rows) => [
+                      ...rows,
+                      { key: newCreateImageKey(), label: "", price: "0", stock: "0" },
+                    ])
+                  }
+                  className="rounded-lg border border-teal-300 bg-teal-50/80 px-2 py-1 text-[11px] font-semibold text-teal-900 dark:border-teal-700 dark:bg-teal-950/40 dark:text-teal-100"
+                >
+                  + เพิ่ม variant
+                </button>
+              </div>
+              {createVariants.length === 0 ? (
+                <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                  เว้นว่างได้ — หรือเพิ่มหลาย SKU (ชื่อ, ราคา, สต็อก)
+                </p>
+              ) : (
+                <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto pr-0.5">
+                  {createVariants.map((row: VariantDraftRow, idx: number) => (
+                    <li
+                      key={row.key}
+                      className="flex flex-wrap items-end gap-2 rounded-lg border border-stone-200/90 bg-stone-50/90 px-2 py-2 dark:border-zinc-700 dark:bg-zinc-900/60"
+                    >
+                      <span className="self-center text-[10px] font-medium tabular-nums text-stone-400">{idx + 1}.</span>
+                      <label className="min-w-[7rem] flex-1">
+                        <span className="sr-only">ชื่อ variant</span>
+                        <input
+                          value={row.label}
+                          onChange={(e) =>
+                            setCreateVariants((rs) =>
+                              rs.map((x) => (x.key === row.key ? { ...x, label: e.target.value } : x)),
+                            )
+                          }
+                          placeholder="เช่น Size L · Red"
+                          className="w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="w-20">
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400">ราคา</span>
+                        <input
+                          inputMode="decimal"
+                          value={row.price}
+                          onChange={(e) =>
+                            setCreateVariants((rs) =>
+                              rs.map((x) => (x.key === row.key ? { ...x, price: e.target.value } : x)),
+                            )
+                          }
+                          className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="w-[4.5rem]">
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400">สต็อก</span>
+                        <input
+                          inputMode="numeric"
+                          value={row.stock}
+                          onChange={(e) =>
+                            setCreateVariants((rs) =>
+                              rs.map((x) => (x.key === row.key ? { ...x, stock: e.target.value } : x)),
+                            )
+                          }
+                          className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busyId === "__create__"}
+                        onClick={() => setCreateVariants((rs) => rs.filter((x) => x.key !== row.key))}
+                        className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                      >
+                        ลบ
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
               ลิงก์วิดีโอ (YouTube / Vimeo — ไม่บังคับ)
               <input

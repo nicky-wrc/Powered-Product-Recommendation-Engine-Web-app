@@ -7,6 +7,7 @@ from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.product_variant import ProductVariant
+from app.models.promo_code import PromoCode
 from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.models.user_address import UserAddress
@@ -17,6 +18,7 @@ __all__ = [
     "Product",
     "ProductImage",
     "ProductVariant",
+    "PromoCode",
     "ProductReview",
     "ProductQuestion",
     "ProductAnswer",

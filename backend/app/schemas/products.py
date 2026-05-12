@@ -184,6 +184,15 @@ class ProductImageReorderBody(BaseModel):
     image_ids: list[UUID] = Field(min_length=1)
 
 
+class ProductVariantUpsert(BaseModel):
+    id: UUID | None = None
+    label: str = Field(min_length=1, max_length=400)
+    price: float = Field(ge=0)
+    stock: int = Field(ge=0, default=0)
+    sort_order: int = Field(default=0)
+    options: dict[str, str] | None = None
+
+
 class ProductCreate(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     description: str | None = None
@@ -195,6 +204,7 @@ class ProductCreate(BaseModel):
     stock: int = Field(default=0, ge=0)
     sale_price: float | None = Field(None, ge=0)
     sale_ends_at: datetime | None = None
+    variants: list[ProductVariantUpsert] | None = None
 
     @model_validator(mode="after")
     def _validate_flash_create(self) -> ProductCreate:
@@ -223,15 +233,6 @@ class ProductCreate(BaseModel):
             return None
         out = [t.strip() for t in v if t and str(t).strip()]
         return out or None
-
-
-class ProductVariantUpsert(BaseModel):
-    id: UUID | None = None
-    label: str = Field(min_length=1, max_length=400)
-    price: float = Field(ge=0)
-    stock: int = Field(ge=0, default=0)
-    sort_order: int = Field(default=0)
-    options: dict[str, str] | None = None
 
 
 class ProductUpdate(BaseModel):

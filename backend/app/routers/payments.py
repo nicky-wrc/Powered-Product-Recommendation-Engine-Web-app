@@ -17,13 +17,11 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.order import Order
-from app.models.product import Product
-from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
-from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout
+from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout, load_checkout_pricing
 from app.services.product_pricing import effective_unit_price
-from app.services.product_variants import product_ids_requiring_variant
+from app.services.promo_codes import normalize_promo_code, preview_promo_discount
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -48,7 +46,17 @@ def _parse_meta_items(raw: str) -> list[tuple[UUID, UUID | None, int]]:
     return out
 
 
-def _gift_opts_from_metadata(meta: dict) -> tuple[bool, str | None]:
+def _stripe_promo_from_metadata(meta: dict) -> tuple[str | None, Decimal | None]:
+    raw_c = meta.get("promo_discount_cents") or "0"
+    try:
+        cents = int(str(raw_c).strip())
+    except ValueError:
+        cents = 0
+    code_raw = meta.get("promo_code")
+    code = code_raw.strip() if isinstance(code_raw, str) and code_raw.strip() else None
+    if cents <= 0:
+        return code, None
+    return code, (Decimal(cents) / Decimal("100")).quantize(Decimal("0.01"))
     wrap = str(meta.get("gift_wrap") or "0") == "1"
     raw = meta.get("gift_message")
     if wrap and isinstance(raw, str) and raw.strip():
@@ -60,6 +68,7 @@ class CheckoutSessionBody(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
     gift_wrap: bool = False
     gift_message: str | None = Field(default=None, max_length=500)
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 def _stripe_enabled() -> bool:
@@ -88,65 +97,60 @@ def create_checkout_session(
         )
 
     lines = _merge_order_lines(body.items)
-    pid_set = {pid for pid, _vid, _q in lines}
-    products: dict[UUID, Product] = {}
-    for pid in sorted(pid_set, key=lambda x: str(x)):
-        p = db.scalar(select(Product).where(Product.id == pid))
-        if p is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
-        products[pid] = p
+    try:
+        pricing = load_checkout_pricing(db, lines, lock_rows=False)
+    except CheckoutError as e:
+        raise HTTPException(e.status_code, e.detail) from e
 
-    need_variants = product_ids_requiring_variant(db, pid_set)
-    variant_rows: dict[UUID, ProductVariant] = {}
-    for pid, vid, q in lines:
-        if vid is not None:
-            v = db.scalar(select(ProductVariant).where(ProductVariant.id == vid))
-            if v is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "Product variant not found")
-            variant_rows[vid] = v
-
-    for pid, vid, q in lines:
-        p = products[pid]
-        if pid in need_variants:
-            if vid is None:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Select a variant for {p.name}")
-            v = variant_rows[vid]
-            if v.product_id != pid:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Variant does not match product")
-            if v.stock < q:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT,
-                    f"Insufficient stock for {p.name} ({v.label})",
-                )
-        else:
-            if vid is not None:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "This product has no variants")
-            if p.stock < q:
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT,
-                    f"Insufficient stock for {p.name}",
-                )
+    discount = Decimal("0")
+    promo_norm: str | None = None
+    if body.promo_code and body.promo_code.strip():
+        d, err = preview_promo_discount(db, body.promo_code, pricing.subtotal)
+        if err:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+        discount = d
+        promo_norm = normalize_promo_code(body.promo_code)
 
     line_items: list[dict] = []
-    for pid, vid, q in sorted(lines, key=lambda x: (str(x[0]), str(x[1] or ""), x[2])):
-        p = products[pid]
-        if vid is not None:
-            v = variant_rows[vid]
-            display = f"{p.name} — {v.label}"
-            unit = v.price
-        else:
-            display = p.name
-            unit = effective_unit_price(p)
+    merch_after = pricing.subtotal - discount
+    if merch_after < 0:
+        merch_after = Decimal("0")
+
+    if discount > 0:
         line_items.append(
             {
-                "quantity": q,
+                "quantity": 1,
                 "price_data": {
                     "currency": "usd",
-                    "unit_amount": _to_cents(unit),
-                    "product_data": {"name": display[:120]},
+                    "unit_amount": _to_cents(merch_after),
+                    "product_data": {
+                        "name": (
+                            f"Cart — {len(pricing.merged)} line(s), promo discount"
+                        )[:120],
+                    },
                 },
             },
         )
+    else:
+        for pid, vid, q in sorted(lines, key=lambda x: (str(x[0]), str(x[1] or ""), x[2])):
+            p = pricing.products[pid]
+            if vid is not None:
+                v = pricing.variants[vid]
+                display = f"{p.name} — {v.label}"
+                unit = v.price
+            else:
+                display = p.name
+                unit = effective_unit_price(p)
+            line_items.append(
+                {
+                    "quantity": q,
+                    "price_data": {
+                        "currency": "usd",
+                        "unit_amount": _to_cents(unit),
+                        "product_data": {"name": display[:120]},
+                    },
+                },
+            )
 
     if body.gift_wrap:
         line_items.append(
@@ -174,7 +178,10 @@ def create_checkout_session(
         "user_id": str(user.id),
         "items": compact_items,
         "gift_wrap": "1" if body.gift_wrap else "0",
+        "promo_discount_cents": str(_to_cents(discount)),
     }
+    if promo_norm:
+        meta["promo_code"] = promo_norm[:60]
     if body.gift_wrap and body.gift_message and body.gift_message.strip():
         meta["gift_message"] = body.gift_message.strip()[:450]
 
@@ -233,6 +240,7 @@ def sync_checkout_session(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cart metadata.") from e
 
     gift_wrap, gift_message = _gift_opts_from_metadata(meta)
+    promo_c, promo_disc = _stripe_promo_from_metadata(meta)
 
     try:
         order = fulfill_checkout(
@@ -243,6 +251,8 @@ def sync_checkout_session(
             stripe_checkout_session_id=session.id,
             gift_wrap=gift_wrap,
             gift_message=gift_message,
+            promo_code=promo_c,
+            stripe_promo_discount=promo_disc,
         )
         db.commit()
     except CheckoutError as e:
@@ -280,6 +290,7 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
         user_id = UUID(uid_s)
         lines = _parse_meta_items(raw_items)
         gift_wrap, gift_message = _gift_opts_from_metadata(meta)
+        promo_c, promo_disc = _stripe_promo_from_metadata(meta)
         fulfill_checkout(
             db,
             user_id,
@@ -288,6 +299,8 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
             stripe_checkout_session_id=session.id,
             gift_wrap=gift_wrap,
             gift_message=gift_message,
+            promo_code=promo_c,
+            stripe_promo_discount=promo_disc,
         )
         db.commit()
     except (CheckoutError, IntegrityError, json.JSONDecodeError, ValueError, TypeError):

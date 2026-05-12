@@ -19,6 +19,7 @@ import {
   patchCartItem,
   postCartItem,
   postOrder,
+  previewPromoCode,
   isLocalUploadImageUrl,
   productImageUrl,
 } from "@/lib/api";
@@ -51,6 +52,9 @@ export default function CartPage() {
   const [stripeAvailable, setStripeAvailable] = useState(false);
   const [giftWrap, setGiftWrap] = useState(false);
   const [giftMessage, setGiftMessage] = useState("");
+  const [promoDraft, setPromoDraft] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discount: number } | null>(null);
+  const [promoHint, setPromoHint] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchPaymentStatus()
@@ -94,6 +98,20 @@ export default function CartPage() {
     window.addEventListener(CART_CHANGED_EVENT, sync);
     return () => window.removeEventListener(CART_CHANGED_EVENT, sync);
   }, []);
+
+  const linesSig = lines.map((l) => `${l.product_id}:${l.variant_id ?? ""}:${l.qty}`).join("|");
+  useEffect(() => {
+    setAppliedPromo(null);
+    setPromoHint(null);
+  }, [linesSig]);
+
+  function orderLinePayload() {
+    return lines.map((l) => ({
+      product_id: l.product_id,
+      quantity: l.qty,
+      variant_id: l.variant_id ?? null,
+    }));
+  }
 
   async function bumpQty(line: Line, delta: number) {
     const t = getToken();
@@ -207,6 +225,35 @@ export default function CartPage() {
     removeSavedForLater(row.product_id, row.variant_id ?? null);
   }
 
+  async function applyPromo() {
+    const t = getToken();
+    if (!t) {
+      router.push("/login?next=/cart");
+      return;
+    }
+    const code = promoDraft.trim();
+    if (!code) {
+      setPromoHint("กรอกรหัสคูปอง");
+      return;
+    }
+    if (lines.length === 0) return;
+    setPromoHint(null);
+    setErr(null);
+    try {
+      const r = await previewPromoCode(t, { code, items: orderLinePayload() });
+      if (!r.valid) {
+        setAppliedPromo(null);
+        setPromoHint(r.error ?? "ใช้คูปองไม่ได้");
+        return;
+      }
+      setAppliedPromo({ code: code.toUpperCase(), discount: r.discount });
+      setPromoHint(`ใช้คูปอง ${code.toUpperCase()} แล้ว · ส่วนลด $${r.discount.toFixed(2)}`);
+    } catch (e) {
+      setAppliedPromo(null);
+      setPromoHint(e instanceof Error ? e.message : "ตรวจคูปองไม่สำเร็จ");
+    }
+  }
+
   async function checkout() {
     const token = getToken();
     if (!token) {
@@ -215,8 +262,10 @@ export default function CartPage() {
     }
     if (lines.length === 0) return;
     const GIFT_WRAP_FEE = 4.99;
-    const subtotal = cartSubtotal(lines);
-    const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const merchandiseSubtotal = cartSubtotal(lines);
+    const promoDiscount = appliedPromo?.discount ?? 0;
+    const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
+    const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
       title: "ยืนยันสั่งซื้อ",
       message: `สั่งซื้อ ${lines.length} รายการ ยอดรวมประมาณ $${orderTotal.toFixed(2)} (ชำระนอกเกตเวย์ — ไม่มีการตัดบัตรออนไลน์ในขั้นตอนนี้)`,
@@ -238,6 +287,7 @@ export default function CartPage() {
           payment_method: "direct",
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
+          promo_code: appliedPromo?.code ?? null,
         },
       );
       clearCart();
@@ -260,8 +310,10 @@ export default function CartPage() {
     }
     if (lines.length === 0) return;
     const GIFT_WRAP_FEE = 4.99;
-    const subtotal = cartSubtotal(lines);
-    const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const merchandiseSubtotal = cartSubtotal(lines);
+    const promoDiscount = appliedPromo?.discount ?? 0;
+    const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
+    const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
       title: "ไปชำระด้วย Stripe",
       message: `คุณจะถูกพาไปชำระผ่าน Stripe${"\n"}ยอดประมาณ $${orderTotal.toFixed(2)} (หากใช้ test key จะเป็นโหมดทดสอบ)`,
@@ -282,6 +334,7 @@ export default function CartPage() {
         {
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
+          promo_code: appliedPromo?.code ?? null,
         },
       );
       window.location.assign(url);
@@ -291,9 +344,11 @@ export default function CartPage() {
     }
   }
 
-  const subtotal = cartSubtotal(lines);
+  const merchandiseSubtotal = cartSubtotal(lines);
   const GIFT_WRAP_FEE = 4.99;
-  const orderTotal = subtotal + (giftWrap ? GIFT_WRAP_FEE : 0);
+  const promoDiscount = appliedPromo?.discount ?? 0;
+  const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
+  const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
 
   return (
     <div className="min-h-screen">
@@ -326,7 +381,7 @@ export default function CartPage() {
           <>
             {lines.length > 0 ? (
               <>
-                <FreeShippingProgress subtotal={subtotal} />
+                <FreeShippingProgress subtotal={merchandiseSubtotal} />
                 <ul className="divide-y divide-stone-200 overflow-hidden rounded-3xl border border-stone-200/90 bg-white/90 shadow-sm dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-950/90">
                   {lines.map((line) => {
                     const displaySrc = productImageUrl({
@@ -418,6 +473,52 @@ export default function CartPage() {
                 </ul>
 
                 <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-50">Promo code</h2>
+                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                    ล็อกอินแล้วลองรหัสทดสอบ <span className="font-mono font-medium text-teal-700 dark:text-teal-400">WELCOME10</span>{" "}
+                    (ลด 10% จากยอดสินค้า)
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={promoDraft}
+                      onChange={(e) => setPromoDraft(e.target.value.toUpperCase())}
+                      placeholder="เช่น WELCOME10"
+                      maxLength={64}
+                      className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm uppercase outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || lines.length === 0}
+                        onClick={() => void applyPromo()}
+                        className="rounded-xl bg-stone-800 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-700 disabled:opacity-50 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-white"
+                      >
+                        Apply
+                      </button>
+                      {appliedPromo ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppliedPromo(null);
+                            setPromoHint(null);
+                            setPromoDraft("");
+                          }}
+                          className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 dark:border-zinc-600 dark:text-stone-200"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {promoHint ? (
+                    <p
+                      className={`mt-2 text-xs ${appliedPromo ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}
+                    >
+                      {promoHint}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
                   <label className="flex cursor-pointer items-start gap-3">
                     <input
                       type="checkbox"
@@ -452,8 +553,13 @@ export default function CartPage() {
                 <div className="flex flex-col gap-4 rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
                     <p className="text-sm tabular-nums text-stone-600 dark:text-stone-400">
-                      Subtotal · ${subtotal.toFixed(2)}
+                      Subtotal · ${merchandiseSubtotal.toFixed(2)}
                     </p>
+                    {promoDiscount > 0 ? (
+                      <p className="text-sm tabular-nums text-emerald-700 dark:text-emerald-400">
+                        Promo ({appliedPromo?.code}) · −${promoDiscount.toFixed(2)}
+                      </p>
+                    ) : null}
                     {giftWrap ? (
                       <p className="text-sm tabular-nums text-stone-600 dark:text-stone-400">
                         Gift wrapping · ${GIFT_WRAP_FEE.toFixed(2)}

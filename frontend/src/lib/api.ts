@@ -675,6 +675,16 @@ export async function fetchAdminAnalytics(token: string): Promise<AdminAnalytics
   return r.json();
 }
 
+/** Upsert rows for admin product create/update (order = sort_order index). */
+export type AdminProductVariantUpsert = {
+  id?: string | null;
+  label: string;
+  price: number;
+  stock: number;
+  sort_order?: number;
+  options?: Record<string, string> | null;
+};
+
 export type AdminProductCreate = {
   name: string;
   description?: string | null;
@@ -686,16 +696,8 @@ export type AdminProductCreate = {
   stock?: number;
   sale_price?: number | null;
   sale_ends_at?: string | null;
-};
-
-/** Upsert rows for PUT /admin/products/:id when replacing variant list (order = sort_order). */
-export type AdminProductVariantUpsert = {
-  id?: string | null;
-  label: string;
-  price: number;
-  stock: number;
-  sort_order?: number;
-  options?: Record<string, string> | null;
+  /** Optional — create product with SKU rows in one request */
+  variants?: AdminProductVariantUpsert[];
 };
 
 export type AdminProductUpdate = Partial<AdminProductCreate> & {
@@ -916,6 +918,8 @@ export type OrderPublic = {
   payment_method: string | null;
   gift_wrap: boolean;
   gift_message: string | null;
+  promo_code?: string | null;
+  promo_discount?: number | null;
   created_at: string;
   items: {
     product_id: string;
@@ -931,14 +935,43 @@ export type OrderCheckoutOptions = {
   payment_method?: string;
   gift_wrap?: boolean;
   gift_message?: string | null;
+  promo_code?: string | null;
 };
+
+export type PromoPreviewResponse = {
+  valid: boolean;
+  error?: string | null;
+  subtotal: number;
+  discount: number;
+  merch_after_discount: number;
+  gift_wrap_fee: number;
+};
+
+export async function previewPromoCode(
+  token: string,
+  body: {
+    code: string;
+    items: { product_id: string; quantity: number; variant_id?: string | null }[];
+  },
+): Promise<PromoPreviewResponse> {
+  const r = await fetch(`${API_BASE}/api/promos/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
 
 export async function postOrder(
   token: string,
   items: { product_id: string; quantity: number; variant_id?: string | null }[],
   options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
-  const { payment_method = "direct", gift_wrap = false, gift_message = null } = options;
+  const { payment_method = "direct", gift_wrap = false, gift_message = null, promo_code = null } = options;
   const r = await fetch(`${API_BASE}/api/orders`, {
     method: "POST",
     headers: {
@@ -950,6 +983,7 @@ export async function postOrder(
       payment_method,
       gift_wrap,
       gift_message: gift_message?.trim() ? gift_message.trim() : null,
+      promo_code: promo_code?.trim() ? promo_code.trim().toUpperCase() : null,
     }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
@@ -967,9 +1001,9 @@ export async function fetchPaymentStatus(): Promise<PaymentStatus> {
 export async function createStripeCheckoutSession(
   token: string,
   items: { product_id: string; quantity: number; variant_id?: string | null }[],
-  options: Pick<OrderCheckoutOptions, "gift_wrap" | "gift_message"> = {},
+  options: Pick<OrderCheckoutOptions, "gift_wrap" | "gift_message" | "promo_code"> = {},
 ): Promise<{ url: string }> {
-  const { gift_wrap = false, gift_message = null } = options;
+  const { gift_wrap = false, gift_message = null, promo_code = null } = options;
   const r = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
     method: "POST",
     headers: {
@@ -980,6 +1014,7 @@ export async function createStripeCheckoutSession(
       items,
       gift_wrap,
       gift_message: gift_message?.trim() ? gift_message.trim() : null,
+      promo_code: promo_code?.trim() ? promo_code.trim().toUpperCase() : null,
     }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));

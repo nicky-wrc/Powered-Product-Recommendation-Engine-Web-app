@@ -281,6 +281,13 @@ export default function OrdersPage() {
                     </li>
                   ))}
                 </ul>
+                {o.promo_code && (o.promo_discount ?? 0) > 0 ? (
+                  <p className="mt-3 text-sm text-teal-800 dark:text-teal-200">
+                    Promo <span className="font-mono font-semibold">{o.promo_code}</span>
+                    {" — "}
+                    −${Number(o.promo_discount).toFixed(2)}
+                  </p>
+                ) : null}
                 {o.gift_wrap ? (
                   <p className="mt-3 rounded-lg border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-950 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
                     <span className="font-semibold">Gift wrapping</span>

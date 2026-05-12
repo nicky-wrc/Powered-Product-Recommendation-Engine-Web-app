@@ -17,6 +17,7 @@ class OrderCreate(BaseModel):
     payment_method: str | None = Field(default="direct", max_length=64)
     gift_wrap: bool = False
     gift_message: str | None = Field(default=None, max_length=500)
+    promo_code: str | None = Field(default=None, max_length=64)
 
 
 class OrderItemPublic(BaseModel):
@@ -40,11 +41,14 @@ class OrderPublic(BaseModel):
     payment_method: str | None
     gift_wrap: bool
     gift_message: str | None
+    promo_code: str | None = None
+    promo_discount: float | None = None
     created_at: datetime
     items: list[OrderItemPublic]
 
 
 def order_public(o: Order) -> OrderPublic:
+    pd = getattr(o, "promo_discount", None)
     return OrderPublic(
         id=o.id,
         user_id=o.user_id,
@@ -53,6 +57,8 @@ def order_public(o: Order) -> OrderPublic:
         payment_method=o.payment_method,
         gift_wrap=bool(getattr(o, "gift_wrap", False)),
         gift_message=getattr(o, "gift_message", None),
+        promo_code=getattr(o, "promo_code", None),
+        promo_discount=float(pd) if pd is not None else None,
         created_at=o.created_at,
         items=[
             OrderItemPublic(

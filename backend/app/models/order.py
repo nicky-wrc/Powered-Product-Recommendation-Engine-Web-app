@@ -20,6 +20,8 @@ class Order(Base):
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     gift_wrap: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     gift_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    promo_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    promo_discount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

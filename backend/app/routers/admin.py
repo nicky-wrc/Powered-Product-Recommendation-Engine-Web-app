@@ -1,7 +1,9 @@
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -17,6 +19,7 @@ from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.product_variant import ProductVariant
+from app.models.promo_code import PromoCode
 from app.models.user import User
 from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
 from app.schemas.products import (
@@ -135,6 +138,7 @@ def create_product(
     db: Session = Depends(get_db),
     _admin: User = Depends(get_admin_user),
 ) -> ProductPublic:
+    variants_in = list(body.variants) if body.variants else []
     p = Product(
         name=body.name.strip(),
         description=(body.description.strip() if body.description else None) or None,
@@ -155,7 +159,28 @@ def create_product(
         db.add(ProductImage(product_id=p.id, image_url=p.image_url, sort_order=0))
         db.commit()
         db.refresh(p)
-    return product_public(p)
+    if variants_in:
+        for i, spec in enumerate(variants_in):
+            db.add(
+                ProductVariant(
+                    product_id=p.id,
+                    label=spec.label.strip(),
+                    price=Decimal(str(spec.price)),
+                    stock=int(spec.stock),
+                    sort_order=i,
+                    options=spec.options,
+                ),
+            )
+        db.commit()
+        db.refresh(p)
+    vrows = list(
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == p.id)
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
+        ).all(),
+    )
+    return product_public(p, variants_for_detail=vrows if vrows else None)
 
 
 @router.put("/products/{product_id}", response_model=ProductPublic)
@@ -430,3 +455,75 @@ def delete_product(
             status.HTTP_409_CONFLICT,
             "Cannot delete product that appears on orders. Remove or archive it instead.",
         ) from None
+
+
+class PromoCodeAdminCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    kind: Literal["percent", "fixed"]
+    value: float = Field(ge=0)
+    min_subtotal: float | None = Field(None, ge=0)
+    max_uses: int | None = Field(None, ge=1)
+    active: bool = True
+
+
+class PromoCodeAdminPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    code: str
+    kind: str
+    value: float
+    min_subtotal: float | None
+    max_uses: int | None
+    uses_count: int
+    active: bool
+
+
+@router.get("/promos", response_model=list[PromoCodeAdminPublic])
+def admin_list_promos(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> list[PromoCodeAdminPublic]:
+    rows = list(db.scalars(select(PromoCode).order_by(PromoCode.code.asc())).all())
+    return [PromoCodeAdminPublic.model_validate(r) for r in rows]
+
+
+@router.post("/promos", response_model=PromoCodeAdminPublic, status_code=status.HTTP_201_CREATED)
+def admin_create_promo(
+    body: PromoCodeAdminCreate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> PromoCodeAdminPublic:
+    code = body.code.strip().upper()
+    if body.kind == "percent" and body.value > 100:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Percent cannot exceed 100")
+    if db.scalar(select(PromoCode).where(PromoCode.code == code)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Promo code already exists")
+    row = PromoCode(
+        code=code,
+        kind=body.kind,
+        value=Decimal(str(body.value)),
+        min_subtotal=Decimal(str(body.min_subtotal)) if body.min_subtotal is not None else None,
+        max_uses=body.max_uses,
+        uses_count=0,
+        active=body.active,
+        valid_from=None,
+        valid_until=None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PromoCodeAdminPublic.model_validate(row)
+
+
+@router.delete("/promos/{promo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_promo(
+    promo_id: UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> None:
+    row = db.get(PromoCode, promo_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Promo not found")
+    db.delete(row)
+    db.commit()
