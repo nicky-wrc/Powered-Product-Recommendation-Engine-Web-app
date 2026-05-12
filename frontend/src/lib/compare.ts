@@ -7,7 +7,17 @@ export const COMPARE_CHANGED_EVENT = "recengine-compare";
 
 export type CompareItem = Pick<
   Product,
-  "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock"
+  | "id"
+  | "name"
+  | "price"
+  | "image_url"
+  | "description"
+  | "category"
+  | "tags"
+  | "stock"
+  | "base_price"
+  | "compare_at_price"
+  | "sale_ends_at"
 >;
 
 function notify() {
@@ -20,6 +30,9 @@ function toItem(p: CompareItem): CompareItem {
     id: p.id,
     name: p.name,
     price: p.price,
+    base_price: p.base_price ?? p.price,
+    compare_at_price: p.compare_at_price,
+    sale_ends_at: p.sale_ends_at,
     image_url: p.image_url,
     description: p.description ?? null,
     category: p.category ?? null,
@@ -95,10 +108,14 @@ export function toggleCompare(
 }
 
 export function compareItemToProduct(c: CompareItem): Product {
+  const base = c.base_price ?? c.price;
   return {
     id: c.id,
     name: c.name,
     price: c.price,
+    base_price: base,
+    compare_at_price: c.compare_at_price,
+    sale_ends_at: c.sale_ends_at,
     image_url: c.image_url,
     description: c.description,
     category: c.category,

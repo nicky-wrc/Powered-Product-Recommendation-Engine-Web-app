@@ -34,7 +34,13 @@ export type Product = {
   id: string;
   name: string;
   description: string | null;
+  /** Current price (after flash deal if active). */
   price: number;
+  /** List/catalog price; mirrors `price` when no flash data present. */
+  base_price?: number;
+  compare_at_price?: number | null;
+  sale_price?: number | null;
+  sale_ends_at?: string | null;
   category: string | null;
   tags: string[] | null;
   image_url: string | null;
@@ -668,6 +674,8 @@ export type AdminProductCreate = {
   image_url?: string | null;
   video_url?: string | null;
   stock?: number;
+  sale_price?: number | null;
+  sale_ends_at?: string | null;
 };
 
 export type AdminProductUpdate = Partial<AdminProductCreate>;

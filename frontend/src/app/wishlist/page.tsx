@@ -99,7 +99,14 @@ export default function WishlistPage() {
                     <Link href={`/products/${w.id}`} className="font-semibold text-stone-900 hover:underline dark:text-stone-100">
                       {w.name}
                     </Link>
-                    <p className="text-lg font-bold tabular-nums text-teal-700 dark:text-teal-400">${w.price.toFixed(2)}</p>
+                    <div className="text-lg font-bold tabular-nums text-teal-700 dark:text-teal-400">
+                      {w.compare_at_price != null && w.compare_at_price > w.price ? (
+                        <span className="mr-2 text-sm font-normal text-stone-400 line-through dark:text-stone-500">
+                          ${w.compare_at_price.toFixed(2)}
+                        </span>
+                      ) : null}
+                      ${w.price.toFixed(2)}
+                    </div>
                     {w.stock <= 0 ? (
                       <p className="text-xs font-medium text-red-600 dark:text-red-400">Out of stock</p>
                     ) : null}

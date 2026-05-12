@@ -21,6 +21,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
 from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout
+from app.services.product_pricing import effective_unit_price
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
@@ -92,7 +93,7 @@ def create_checkout_session(
                 "quantity": q,
                 "price_data": {
                     "currency": "usd",
-                    "unit_amount": _to_cents(p.price),
+                    "unit_amount": _to_cents(effective_unit_price(p)),
                     "product_data": {"name": p.name},
                 },
             },

@@ -9,6 +9,9 @@ export type WishlistItem = {
   id: string;
   name: string;
   price: number;
+  base_price?: number;
+  compare_at_price?: number | null;
+  sale_ends_at?: string | null;
   image_url: string | null;
   /** เก็บเมื่อมีหลายรูป (PDP / แกลเลอรี่) — รายการเก่าใน localStorage อาจไม่มีฟิลด์นี้ */
   image_urls?: string[] | null;
@@ -24,12 +27,29 @@ function notify() {
 }
 
 function toItem(
-  p: Pick<Product, "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock" | "image_urls">,
+  p: Pick<
+    Product,
+    | "id"
+    | "name"
+    | "price"
+    | "image_url"
+    | "description"
+    | "category"
+    | "tags"
+    | "stock"
+    | "image_urls"
+    | "base_price"
+    | "compare_at_price"
+    | "sale_ends_at"
+  >,
 ): WishlistItem {
   return {
     id: p.id,
     name: p.name,
     price: p.price,
+    base_price: p.base_price ?? p.price,
+    compare_at_price: p.compare_at_price,
+    sale_ends_at: p.sale_ends_at,
     image_url: p.image_url,
     image_urls: p.image_urls?.length ? p.image_urls : null,
     description: p.description ?? null,
@@ -75,7 +95,20 @@ export function wishlistCount(): number {
 
 /** Add if missing, remove if present — returns true if now in list. */
 export function toggleWishlist(
-  p: Pick<Product, "id" | "name" | "price" | "image_url" | "description" | "category" | "tags" | "stock">,
+  p: Pick<
+    Product,
+    | "id"
+    | "name"
+    | "price"
+    | "image_url"
+    | "description"
+    | "category"
+    | "tags"
+    | "stock"
+    | "base_price"
+    | "compare_at_price"
+    | "sale_ends_at"
+  >,
 ): boolean {
   const item = toItem(p);
   const list = getWishlist();
@@ -95,10 +128,14 @@ export function removeFromWishlist(productId: string) {
 }
 
 export function wishlistItemToProduct(w: WishlistItem): Product {
+  const base = w.base_price ?? w.price;
   return {
     id: w.id,
     name: w.name,
     price: w.price,
+    base_price: base,
+    compare_at_price: w.compare_at_price,
+    sale_ends_at: w.sale_ends_at,
     image_url: w.image_url,
     image_urls: w.image_urls?.length ? w.image_urls : undefined,
     description: w.description,

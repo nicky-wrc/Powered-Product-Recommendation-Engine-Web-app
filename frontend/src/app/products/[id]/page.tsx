@@ -9,6 +9,7 @@ import { ProductExploreTrustSection } from "@/components/ProductExploreTrustSect
 import { ProductHighlightsSection } from "@/components/ProductHighlightsSection";
 import { ProductFaqSection } from "@/components/ProductFaqSection";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { FlashSaleCountdown } from "@/components/FlashSaleCountdown";
 import { ProductMediaSpotlightSection } from "@/components/ProductMediaSpotlightSection";
 import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
 import { ProductQaSection } from "@/components/ProductQaSection";
@@ -142,9 +143,26 @@ export default async function ProductDetailPage({ params }: Props) {
               {p.name}
             </h1>
             <div className="flex flex-wrap items-baseline gap-4">
-              <p className="text-3xl font-bold tabular-nums text-teal-700 dark:text-teal-400">
-                ${p.price.toFixed(2)}
-              </p>
+              <div className="flex flex-col gap-1">
+                {p.compare_at_price != null && p.compare_at_price > p.price ? (
+                  <span className="text-lg text-stone-400 line-through tabular-nums dark:text-stone-500">
+                    ${p.compare_at_price.toFixed(2)}
+                  </span>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-3xl font-bold tabular-nums text-teal-700 dark:text-teal-400">
+                    ${p.price.toFixed(2)}
+                  </p>
+                  {p.compare_at_price != null && p.compare_at_price > p.price ? (
+                    <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-bold uppercase text-rose-800 dark:bg-rose-950 dark:text-rose-200">
+                      Flash deal
+                    </span>
+                  ) : null}
+                </div>
+                {p.compare_at_price != null && p.sale_ends_at ? (
+                  <FlashSaleCountdown endsAtIso={p.sale_ends_at} className="!mt-1" />
+                ) : null}
+              </div>
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
                   p.stock > 10

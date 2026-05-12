@@ -30,6 +30,8 @@ type FormDraft = {
   name: string;
   description: string;
   price: string;
+  sale_price: string;
+  sale_ends_at: string;
   category: string;
   tags: string[];
   image_url: string;
@@ -52,6 +54,30 @@ function tagsForApi(tags: string[]): string[] | null {
   return out.length ? out : null;
 }
 
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Empty: no flash. Incomplete: one field set — invalid. Otherwise payload for API. */
+function flashPayloadFromForm(salePriceStr: string, saleEndsLocal: string):
+  | { sale_price?: number | null; sale_ends_at?: string | null }
+  | "empty"
+  | "incomplete" {
+  const spTrim = salePriceStr.trim();
+  const endsTrim = saleEndsLocal.trim();
+  if (!spTrim && !endsTrim) return "empty";
+  if (!spTrim || !endsTrim) return "incomplete";
+  const sp = Number(spTrim);
+  if (!Number.isFinite(sp) || sp < 0) throw new Error("ราคา Flash deal ไม่ถูกต้อง");
+  const iso = new Date(endsTrim);
+  if (Number.isNaN(iso.getTime())) throw new Error("วัน-เวลาหมด Flash deal ไม่ถูกต้อง");
+  return { sale_price: sp, sale_ends_at: iso.toISOString() };
+}
+
 /** Resolve stored `/uploads/...` for <img> in the browser (proxy or direct API). */
 function displayImageSrc(pathOrUrl: string): string {
   if (!pathOrUrl) return "";
@@ -70,6 +96,8 @@ const emptyDraft: FormDraft = {
   name: "",
   description: "",
   price: "",
+  sale_price: "",
+  sale_ends_at: "",
   category: "",
   tags: [],
   image_url: "",
@@ -170,7 +198,9 @@ export function AdminProductManager({ token }: Props) {
     setForm({
       name: prod.name,
       description: prod.description ?? "",
-      price: String(prod.price),
+      price: String(prod.base_price ?? prod.price),
+      sale_price: prod.sale_price != null ? String(prod.sale_price) : "",
+      sale_ends_at: toDatetimeLocalValue(prod.sale_ends_at),
       category: prod.category ?? "",
       tags: [...(prod.tags ?? [])],
       image_url: prod.image_url ?? "",
@@ -186,7 +216,9 @@ export function AdminProductManager({ token }: Props) {
     setForm({
       name: p.name,
       description: p.description ?? "",
-      price: String(p.price),
+      price: String(p.base_price ?? p.price),
+      sale_price: p.sale_price != null ? String(p.sale_price) : "",
+      sale_ends_at: toDatetimeLocalValue(p.sale_ends_at),
       category: p.category ?? "",
       tags: [...(p.tags ?? [])],
       image_url: p.image_url ?? "",
@@ -231,6 +263,11 @@ export function AdminProductManager({ token }: Props) {
       if (!createForm.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
       if (!Number.isFinite(price) || price < 0) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
       if (!Number.isFinite(stock) || stock < 0) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
+      const flash = flashPayloadFromForm(createForm.sale_price, createForm.sale_ends_at);
+      if (flash === "incomplete") throw new Error("ตั้ง Flash deal ต้องกรอกทั้งราคาโปรและวัน-เวลาหมดโปร");
+      if (flash !== "empty" && flash.sale_price != null && flash.sale_price >= price) {
+        throw new Error("ราคา Flash deal ต้องต่ำกว่าราคาปกติ");
+      }
       const galleryUrls = createGallery.map((x) => x.url.trim()).filter(Boolean);
       const image_url = galleryUrls[0] ?? null;
       const created = await adminCreateProduct(token, {
@@ -242,6 +279,7 @@ export function AdminProductManager({ token }: Props) {
         image_url,
         video_url: createForm.video_url.trim() || null,
         stock,
+        ...(flash === "empty" ? {} : flash),
       });
       let galleryError: string | null = null;
       try {
@@ -287,6 +325,14 @@ export function AdminProductManager({ token }: Props) {
       if (!form.name.trim()) throw new Error("กรุณากรอกชื่อสินค้า");
       if (price !== undefined && (!Number.isFinite(price) || price < 0)) throw new Error("กรุณากรอกราคาให้ถูกต้อง");
       if (stock !== undefined && (!Number.isFinite(stock) || stock < 0)) throw new Error("กรุณากรอกจำนวนคงเหลือให้ถูกต้อง");
+      const flash = flashPayloadFromForm(form.sale_price, form.sale_ends_at);
+      if (flash === "incomplete") throw new Error("ตั้ง Flash deal ต้องกรอกทั้งราคาโปรและวัน-เวลาหมดโปร");
+      const listPrice = price ?? Number(form.price);
+      if (flash !== "empty" && flash.sale_price != null && Number.isFinite(listPrice) && flash.sale_price >= listPrice) {
+        throw new Error("ราคา Flash deal ต้องต่ำกว่าราคาปกติ");
+      }
+      const flashPart =
+        flash === "empty" ? { sale_price: null as number | null, sale_ends_at: null as string | null } : flash;
       const body: Parameters<typeof adminUpdateProduct>[2] = {
         name: form.name.trim(),
         description: form.description.trim() || null,
@@ -295,6 +341,7 @@ export function AdminProductManager({ token }: Props) {
         tags: tagsForApi(form.tags),
         stock,
         video_url: form.video_url.trim() || null,
+        ...flashPart,
       };
       if (editGallery.length === 0) {
         body.image_url = form.image_url.trim() || null;
@@ -549,6 +596,25 @@ export function AdminProductManager({ token }: Props) {
                 onChange={(e) => setCreateForm((d) => ({ ...d, stock: e.target.value }))}
                 placeholder="0"
                 className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              Flash deal — ราคาโปร (ไม่บังคับ)
+              <input
+                inputMode="decimal"
+                value={createForm.sale_price}
+                onChange={(e) => setCreateForm((d) => ({ ...d, sale_price: e.target.value }))}
+                placeholder="เช่น 29.99 — ต้องต่ำกว่าราคาปกติ"
+                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              หมดโปรเมื่อ (local) — ต้องกรอกคู่กับราคาโปร
+              <input
+                type="datetime-local"
+                value={createForm.sale_ends_at}
+                onChange={(e) => setCreateForm((d) => ({ ...d, sale_ends_at: e.target.value }))}
+                className="mt-1.5 w-full max-w-md rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
               />
             </label>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
@@ -851,6 +917,25 @@ export function AdminProductManager({ token }: Props) {
                         onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
                         className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
                       />
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        Flash deal — ราคาโปร (ว่างทั้งคู่ = ปิดโปร)
+                        <input
+                          inputMode="decimal"
+                          value={form.sale_price}
+                          onChange={(e) => setForm((f) => ({ ...f, sale_price: e.target.value }))}
+                          placeholder="ต่ำกว่าราคาปกติ"
+                          className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        หมดโปรเมื่อ (datetime local)
+                        <input
+                          type="datetime-local"
+                          value={form.sale_ends_at}
+                          onChange={(e) => setForm((f) => ({ ...f, sale_ends_at: e.target.value }))}
+                          className="mt-1 w-full max-w-md rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
                       <div className="sm:col-span-2">
                         <input
                           list="admin-category-datalist-edit"
@@ -1038,7 +1123,17 @@ export function AdminProductManager({ token }: Props) {
                               </span>
                             )}
                             <span className="text-sm font-semibold tabular-nums text-stone-900 dark:text-stone-100">
+                              {p.compare_at_price != null && p.compare_at_price > p.price ? (
+                                <span className="mr-2 text-stone-400 line-through dark:text-stone-500">
+                                  ${p.compare_at_price.toFixed(2)}
+                                </span>
+                              ) : null}
                               ${p.price.toFixed(2)}
+                              {p.compare_at_price != null && p.compare_at_price > p.price ? (
+                                <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-800 dark:bg-rose-950 dark:text-rose-200">
+                                  Sale
+                                </span>
+                              ) : null}
                             </span>
                             <span className="text-sm text-stone-600 dark:text-stone-400">
                               คงเหลือ <strong className="text-stone-900 dark:text-stone-100">{p.stock}</strong>

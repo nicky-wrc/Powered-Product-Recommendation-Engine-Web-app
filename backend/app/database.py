@@ -41,6 +41,8 @@ def apply_runtime_schema_patches() -> None:
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_wrap BOOLEAN DEFAULT false;",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_message VARCHAR(500);",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS video_url VARCHAR(2048);",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price NUMERIC(12,2);",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_ends_at TIMESTAMPTZ;",
         ):
             conn.execute(text(stmt))
 

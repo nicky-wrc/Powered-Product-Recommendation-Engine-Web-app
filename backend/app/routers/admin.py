@@ -35,6 +35,21 @@ from app.upload_paths import PRODUCT_IMAGES_DIR
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _validate_product_flash(p: Product) -> None:
+    has_s = p.sale_price is not None
+    has_e = p.sale_ends_at is not None
+    if has_s != has_e:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "sale_price and sale_ends_at must both be set or both cleared",
+        )
+    if has_s and p.sale_price is not None and p.sale_price >= p.price:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "sale_price must be less than list price",
+        )
+
+
 def _admin_product_detail(db: Session, p: Product) -> AdminProductDetailResponse:
     imgs = list(
         db.scalars(
@@ -120,7 +135,10 @@ def create_product(
         image_url=(body.image_url.strip() if body.image_url else None) or None,
         video_url=body.video_url,
         stock=body.stock,
+        sale_price=Decimal(str(body.sale_price)) if body.sale_price is not None else None,
+        sale_ends_at=body.sale_ends_at,
     )
+    _validate_product_flash(p)
     db.add(p)
     db.commit()
     db.refresh(p)
@@ -179,6 +197,12 @@ def update_product(
             p.video_url = None
         else:
             p.video_url = str(u).strip() or None
+    if "sale_price" in data:
+        sp = data["sale_price"]
+        p.sale_price = Decimal(str(sp)) if sp is not None else None
+    if "sale_ends_at" in data:
+        p.sale_ends_at = data["sale_ends_at"]
+    _validate_product_flash(p)
     db.commit()
     db.refresh(p)
     return product_public(p)

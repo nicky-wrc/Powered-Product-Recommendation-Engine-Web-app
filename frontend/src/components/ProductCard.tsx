@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { FlashSaleCountdown } from "@/components/FlashSaleCountdown";
 import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
 import { addProductToCart } from "@/lib/cartActions";
 import { CompareToggle } from "@/components/CompareToggle";
@@ -70,9 +71,22 @@ export function ProductCard({ p, priority = false }: Props) {
           <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-stone-900 dark:text-stone-50">
             {p.name}
           </p>
-          <p className="mt-auto pt-2 text-lg font-bold tabular-nums text-teal-700 dark:text-teal-400">
-            ${p.price.toFixed(2)}
-          </p>
+          <div className="mt-auto pt-2 space-y-1">
+            {p.compare_at_price != null && p.compare_at_price > p.price ? (
+              <>
+                <span className="text-sm text-stone-400 line-through tabular-nums dark:text-stone-500">
+                  ${p.compare_at_price.toFixed(2)}
+                </span>
+                <span className="ml-2 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-800 dark:bg-rose-950 dark:text-rose-200">
+                  Sale
+                </span>
+              </>
+            ) : null}
+            <p className="text-lg font-bold tabular-nums text-teal-700 dark:text-teal-400">${p.price.toFixed(2)}</p>
+            {p.compare_at_price != null && p.sale_ends_at ? (
+              <FlashSaleCountdown endsAtIso={p.sale_ends_at} className="!text-[11px] !font-medium" />
+            ) : null}
+          </div>
         </div>
       </Link>
       <div className="border-t border-stone-100 p-2 dark:border-zinc-800">

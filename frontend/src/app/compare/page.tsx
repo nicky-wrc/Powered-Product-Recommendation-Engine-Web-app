@@ -210,6 +210,11 @@ export default function ComparePage() {
                       key={c.id}
                       className="px-3 py-3 text-center tabular-nums font-bold text-teal-700 dark:text-teal-400"
                     >
+                      {c.compare_at_price != null && c.compare_at_price > c.price ? (
+                        <span className="mr-1 block text-xs font-normal text-stone-400 line-through dark:text-stone-500 sm:mr-2 sm:inline">
+                          ${c.compare_at_price.toFixed(2)}
+                        </span>
+                      ) : null}
                       ${c.price.toFixed(2)}
                     </td>
                   ))}

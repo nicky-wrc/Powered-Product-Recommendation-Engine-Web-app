@@ -5,10 +5,14 @@ const MAX = 10;
 export const RECENT_CHANGED_EVENT = "recengine-recent";
 
 function toProduct(s: Partial<Product> & Pick<Product, "id" | "name" | "price">): Product {
+  const base = s.base_price ?? s.price;
   return {
     id: s.id,
     name: s.name,
     price: s.price,
+    base_price: base,
+    compare_at_price: s.compare_at_price,
+    sale_ends_at: s.sale_ends_at,
     description: s.description ?? null,
     category: s.category ?? null,
     tags: s.tags ?? null,

@@ -10,6 +10,7 @@ from app.models.cart_item import CartItem
 from app.models.interaction import Interaction
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.services.product_pricing import effective_unit_price
 from app.services.interaction_weights import interaction_weight
 
 GIFT_WRAP_FEE = Decimal("4.99")
@@ -57,7 +58,7 @@ def fulfill_checkout(
 
     subtotal = Decimal("0")
     for pid, q in qty_map.items():
-        subtotal += products[pid].price * q
+        subtotal += effective_unit_price(products[pid]) * q
 
     wrap_requested = bool(gift_wrap)
     msg_clean = (gift_message or "").strip()[:500] if wrap_requested else None
@@ -84,7 +85,7 @@ def fulfill_checkout(
                 product_id=pid,
                 product_name=p.name,
                 quantity=q,
-                unit_price=p.price,
+                unit_price=effective_unit_price(p),
             ),
         )
         p.stock -= q

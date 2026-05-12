@@ -1,9 +1,11 @@
+from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.product import Product
 from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
+from app.services.product_pricing import effective_unit_price, flash_sale_active
 
 
 class ProductPublic(BaseModel):
@@ -12,7 +14,11 @@ class ProductPublic(BaseModel):
     id: UUID
     name: str
     description: str | None
-    price: float
+    price: float  # effective (customer pays)
+    base_price: float  # catalog / list price in DB
+    compare_at_price: float | None = None  # equals base_price when flash deal is active (for strikethrough)
+    sale_price: float | None = None  # promo price from DB (admin / detail)
+    sale_ends_at: datetime | None = None  # promo end (may be past)
     category: str | None
     tags: list[str] | None
     image_url: str | None
@@ -26,11 +32,18 @@ def product_public(p: Product, *, gallery_urls: list[str] | None = None) -> Prod
         urls = list(gallery_urls)
     else:
         urls = [p.image_url] if p.image_url else []
+    active = flash_sale_active(p)
+    eff = effective_unit_price(p)
+    base = float(p.price)
     return ProductPublic(
         id=p.id,
         name=p.name,
         description=p.description,
-        price=float(p.price),
+        price=float(eff),
+        base_price=base,
+        compare_at_price=base if active else None,
+        sale_price=float(p.sale_price) if p.sale_price is not None else None,
+        sale_ends_at=p.sale_ends_at,
         category=p.category,
         tags=list(p.tags) if p.tags is not None else None,
         image_url=p.image_url,
@@ -100,6 +113,18 @@ class ProductCreate(BaseModel):
     image_url: str | None = Field(None, max_length=2048)
     video_url: str | None = Field(None, max_length=2048)
     stock: int = Field(default=0, ge=0)
+    sale_price: float | None = Field(None, ge=0)
+    sale_ends_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate_flash_create(self) -> ProductCreate:
+        has_s = self.sale_price is not None
+        has_e = self.sale_ends_at is not None
+        if has_s != has_e:
+            raise ValueError("sale_price and sale_ends_at must both be set, or both omitted")
+        if has_s and self.sale_price is not None and self.sale_price >= self.price:
+            raise ValueError("sale_price must be less than list price")
+        return self
 
     @field_validator("image_url", "video_url", mode="before")
     @classmethod
@@ -129,6 +154,8 @@ class ProductUpdate(BaseModel):
     image_url: str | None = Field(None, max_length=2048)
     video_url: str | None = Field(None, max_length=2048)
     stock: int | None = Field(None, ge=0)
+    sale_price: float | None = Field(None, ge=0)
+    sale_ends_at: datetime | None = None
 
     @field_validator("image_url", "video_url", mode="before")
     @classmethod

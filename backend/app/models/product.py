@@ -26,6 +26,9 @@ class Product(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+    # Flash deal: when active (sale_ends_at in future, sale_price < price), storefront uses sale_price.
+    sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    sale_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",

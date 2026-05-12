@@ -129,6 +129,13 @@ export function ProductHighlightsSection({ product, reviewCount, reviewAverage }
             <span className="font-semibold text-stone-900 dark:text-stone-100">ราคาและรีวิว</span>
             <span className="mt-0.5 block">
               ราคาปัจจุบัน{" "}
+              {product.compare_at_price != null && product.compare_at_price > product.price ? (
+                <>
+                  <span className="text-stone-400 line-through tabular-nums dark:text-stone-500">
+                    ${product.compare_at_price.toFixed(2)}
+                  </span>{" "}
+                </>
+              ) : null}
               <span className="font-bold tabular-nums text-teal-700 dark:text-teal-400">${product.price.toFixed(2)}</span>
               {" · "}
               {reviewLine}
