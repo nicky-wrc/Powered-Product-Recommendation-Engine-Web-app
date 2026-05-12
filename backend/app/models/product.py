@@ -42,3 +42,8 @@ class Product(Base):
         back_populates="product",
         cascade="all, delete-orphan",
     )
+    qa_questions: Mapped[list["ProductQuestion"]] = relationship(
+        "ProductQuestion",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )

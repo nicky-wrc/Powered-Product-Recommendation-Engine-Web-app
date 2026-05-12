@@ -553,6 +553,76 @@ export async function uploadReviewImage(token: string, file: File): Promise<{ ur
   return r.json();
 }
 
+export type ProductQaAnswer = {
+  id: string;
+  body: string;
+  author_name: string;
+  created_at: string;
+};
+
+export type ProductQaItem = {
+  id: string;
+  question: string;
+  asker_name: string;
+  created_at: string;
+  is_mine: boolean;
+  answer: ProductQaAnswer | null;
+};
+
+export async function fetchProductQa(productId: string): Promise<ProductQaItem[]> {
+  const r = await fetch(`${API_BASE}/api/products/${productId}/qa`, { cache: "no-store" });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  const data: { items: ProductQaItem[] } = await r.json();
+  return data.items;
+}
+
+export async function postProductQuestion(token: string, productId: string, body: string): Promise<ProductQaItem[]> {
+  const r = await fetch(`${API_BASE}/api/products/${productId}/qa`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ body }),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  const data: { items: ProductQaItem[] } = await r.json();
+  return data.items;
+}
+
+export async function postAdminProductQaAnswer(
+  token: string,
+  productId: string,
+  questionId: string,
+  body: string,
+): Promise<ProductQaItem> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/qa/${questionId}/answer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ body }),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function deleteAdminProductQuestion(
+  token: string,
+  productId: string,
+  questionId: string,
+): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/admin/products/${productId}/qa/${questionId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+}
+
 export type AdminAnalytics = {
   total_users: number;
   total_products: number;

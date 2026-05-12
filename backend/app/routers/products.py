@@ -10,9 +10,15 @@ from app.database import get_db
 from app.deps import get_current_user, get_current_user_optional
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
+from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.user import User
+from app.schemas.product_qa import (
+    ProductQaListResponse,
+    ProductQuestionCreate,
+)
 from app.schemas.products import (
     ProductListResponse,
     ProductSuggestItem,
@@ -28,6 +34,7 @@ from app.schemas.reviews import (
     ReviewSummary,
 )
 from app.services.bought_together import bought_together_products
+from app.services.product_qa import product_qa_item_public
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -318,6 +325,59 @@ def delete_my_product_review(
     db.delete(row)
     db.commit()
     return _review_summary(db, product_id)
+
+
+@router.get("/{product_id}/qa", response_model=ProductQaListResponse)
+def list_product_qa(
+    product_id: UUID,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_current_user_optional),
+) -> ProductQaListResponse:
+    _ensure_product(db, product_id)
+    viewer_id = viewer.id if viewer else None
+    stmt = (
+        select(ProductQuestion)
+        .where(ProductQuestion.product_id == product_id)
+        .options(
+            joinedload(ProductQuestion.author),
+            joinedload(ProductQuestion.answer).joinedload(ProductAnswer.author),
+        )
+        .order_by(ProductQuestion.created_at.desc())
+    )
+    rows = list(db.scalars(stmt).unique().all())
+    return ProductQaListResponse(items=[product_qa_item_public(q, viewer_id) for q in rows])
+
+
+@router.post(
+    "/{product_id}/qa",
+    response_model=ProductQaListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_product_question(
+    product_id: UUID,
+    body: ProductQuestionCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProductQaListResponse:
+    _ensure_product(db, product_id)
+    q = ProductQuestion(
+        product_id=product_id,
+        user_id=user.id,
+        body=body.body.strip(),
+    )
+    db.add(q)
+    db.commit()
+    stmt = (
+        select(ProductQuestion)
+        .where(ProductQuestion.product_id == product_id)
+        .options(
+            joinedload(ProductQuestion.author),
+            joinedload(ProductQuestion.answer).joinedload(ProductAnswer.author),
+        )
+        .order_by(ProductQuestion.created_at.desc())
+    )
+    rows = list(db.scalars(stmt).unique().all())
+    return ProductQaListResponse(items=[product_qa_item_public(r, user.id) for r in rows])
 
 
 @router.get("/{product_id}", response_model=ProductWithSimilar)

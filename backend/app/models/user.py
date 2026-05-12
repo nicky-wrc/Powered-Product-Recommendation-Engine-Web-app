@@ -47,3 +47,13 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    product_questions: Mapped[list["ProductQuestion"]] = relationship(
+        "ProductQuestion",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
+    product_answers: Mapped[list["ProductAnswer"]] = relationship(
+        "ProductAnswer",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )

@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import get_admin_user
@@ -12,11 +12,12 @@ from app.image_upload import read_image_upload
 from app.models.interaction import Interaction
 from app.models.order import Order
 from app.models.product import Product
+from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
+from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.user import User
-from app.services.product_gallery import sync_product_cover
-from app.upload_paths import PRODUCT_IMAGES_DIR
+from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
 from app.schemas.products import (
     AdminProductDetailResponse,
     ProductCreate,
@@ -27,6 +28,9 @@ from app.schemas.products import (
     ProductUpdate,
     product_public,
 )
+from app.services.product_gallery import sync_product_cover
+from app.services.product_qa import product_qa_item_public
+from app.upload_paths import PRODUCT_IMAGES_DIR
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -274,6 +278,65 @@ def admin_delete_product_review(
     if row is None or row.product_id != product_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
     db.delete(row)
+    db.commit()
+
+
+@router.post(
+    "/products/{product_id}/qa/{question_id}/answer",
+    response_model=ProductQaItemPublic,
+)
+def admin_answer_product_question(
+    product_id: UUID,
+    question_id: UUID,
+    body: ProductAnswerBody,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+) -> ProductQaItemPublic:
+    q = db.scalar(
+        select(ProductQuestion)
+        .where(ProductQuestion.id == question_id, ProductQuestion.product_id == product_id)
+        .options(
+            joinedload(ProductQuestion.author),
+            joinedload(ProductQuestion.answer).joinedload(ProductAnswer.author),
+        ),
+    )
+    if q is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
+    text = body.body.strip()
+    if q.answer:
+        q.answer.body = text
+        q.answer.user_id = admin.id
+    else:
+        db.add(ProductAnswer(question_id=q.id, user_id=admin.id, body=text))
+    db.commit()
+    row = db.scalar(
+        select(ProductQuestion)
+        .where(ProductQuestion.id == question_id)
+        .options(
+            joinedload(ProductQuestion.author),
+            joinedload(ProductQuestion.answer).joinedload(ProductAnswer.author),
+        ),
+    )
+    assert row is not None
+    return product_qa_item_public(row, admin.id)
+
+
+@router.delete("/products/{product_id}/qa/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_product_question(
+    product_id: UUID,
+    question_id: UUID,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> None:
+    q = db.scalar(
+        select(ProductQuestion).where(
+            ProductQuestion.id == question_id,
+            ProductQuestion.product_id == product_id,
+        ),
+    )
+    if q is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found")
+    db.delete(q)
     db.commit()
 
 

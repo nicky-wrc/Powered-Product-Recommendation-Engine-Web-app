@@ -11,6 +11,7 @@ import { ProductFaqSection } from "@/components/ProductFaqSection";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { ProductMediaSpotlightSection } from "@/components/ProductMediaSpotlightSection";
 import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
+import { ProductQaSection } from "@/components/ProductQaSection";
 import { ProductRecommendationGridSection } from "@/components/ProductRecommendationGridSection";
 import { ProductRecentSection } from "@/components/ProductRecentSection";
 import { ProductReviewsSection } from "@/components/ProductReviewsSection";
@@ -204,6 +205,8 @@ export default async function ProductDetailPage({ params }: Props) {
         </div>
 
         <ProductReviewsSection productId={p.id} initialSummary={review_summary} initialEligibility={review_eligibility} />
+
+        <ProductQaSection productId={p.id} />
 
         <ProductHighlightsSection
           product={p}
