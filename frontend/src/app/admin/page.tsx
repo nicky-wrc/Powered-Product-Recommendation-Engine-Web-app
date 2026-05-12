@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
+import { AdminDashboardCharts } from "@/components/admin/AdminDashboardCharts";
 import type { AdminAnalytics, Readiness } from "@/lib/api";
 import { fetchAdminAnalytics, fetchReadiness, getToken } from "@/lib/api";
 
@@ -39,17 +40,6 @@ export default function AdminDashboardPage() {
     };
   }, [data]);
 
-  const chartRows = useMemo(() => {
-    if (!data) return [];
-    return [
-      { label: "ดูสินค้า", value: data.total_views },
-      { label: "คลิก", value: data.total_clicks },
-      { label: "ซื้อ (event)", value: data.total_purchases },
-    ];
-  }, [data]);
-
-  const chartMax = useMemo(() => Math.max(...chartRows.map((r) => r.value), 1), [chartRows]);
-
   return (
     <>
       <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
@@ -85,6 +75,8 @@ export default function AdminDashboardPage() {
             <Metric title="CTR" value={data.ctr} format="pct" />
           </div>
 
+          <AdminDashboardCharts data={data} />
+
           {ready ? (
             <div className="rounded-3xl border border-stone-200/90 bg-gradient-to-br from-teal-50/80 to-white/90 p-6 shadow-sm dark:border-zinc-800 dark:from-teal-950/40 dark:to-zinc-950/80 md:p-7">
               <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">สถานะระบบ</h2>
@@ -112,27 +104,6 @@ export default function AdminDashboardPage() {
               </p>
             </div>
           ) : null}
-
-          <div className="rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 md:p-8">
-            <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">ปริมาณอีเวนต์</h2>
-            <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">สัดส่วนเทียบค่าสูงสุดในมุมมองนี้ (100%)</p>
-            <div className="mt-6 space-y-4">
-              {chartRows.map((row) => (
-                <div key={row.label}>
-                  <div className="mb-1 flex justify-between text-xs font-medium text-stone-600 dark:text-stone-400">
-                    <span>{row.label}</span>
-                    <span className="tabular-nums">{row.value}</span>
-                  </div>
-                  <div className="h-3 overflow-hidden rounded-full bg-stone-100 dark:bg-zinc-800">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 transition-all duration-500"
-                      style={{ width: `${Math.min(100, (row.value / chartMax) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <p className="text-xs text-stone-500 dark:text-stone-400">{data.note}</p>
         </>
