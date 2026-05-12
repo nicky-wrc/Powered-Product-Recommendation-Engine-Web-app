@@ -14,6 +14,7 @@ from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
+from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.product_qa import (
     ProductQaListResponse,
@@ -35,6 +36,7 @@ from app.schemas.reviews import (
 )
 from app.services.bought_together import bought_together_products
 from app.services.product_qa import product_qa_item_public
+from app.services.product_variants import variant_aggregates_for_product_ids
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -125,8 +127,13 @@ def list_products(
     stmt = stmt.offset((page - 1) * limit).limit(limit)
     rows = db.scalars(stmt).all()
     total_pages = math.ceil(total / limit) if limit else 0
+    ids = [p.id for p in rows]
+    agg = variant_aggregates_for_product_ids(db, ids)
     return ProductListResponse(
-        products=[product_public(p) for p in rows],
+        products=[
+            product_public(p, variant_aggregate=agg.get(p.id) if agg.get(p.id) and agg[p.id][0] > 0 else None)
+            for p in rows
+        ],
         total=total,
         page=page,
         total_pages=total_pages,
@@ -409,6 +416,14 @@ def get_product(
 
     bought = bought_together_products(db, product_id, 8)
 
+    variant_rows = list(
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == product_id)
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
+        ).all(),
+    )
+
     gallery_rows = list(
         db.scalars(
             select(ProductImage)
@@ -418,10 +433,19 @@ def get_product(
     )
     gallery_urls = [r.image_url for r in gallery_rows] or ([p.image_url] if p.image_url else [])
 
+    extra_ids = [x.id for x in similar] + [x.id for x in bought]
+    agg_map = variant_aggregates_for_product_ids(db, extra_ids)
+
     return ProductWithSimilar(
-        product=product_public(p, gallery_urls=gallery_urls),
-        similar_products=[product_public(x) for x in similar],
-        bought_together=[product_public(x) for x in bought],
+        product=product_public(p, gallery_urls=gallery_urls, variants_for_detail=variant_rows or None),
+        similar_products=[
+            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
+            for x in similar
+        ],
+        bought_together=[
+            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
+            for x in bought
+        ],
         review_summary=_review_summary(db, product_id),
         review_eligibility=_review_eligibility(db, product_id, viewer),
     )

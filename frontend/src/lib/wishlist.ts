@@ -19,6 +19,8 @@ export type WishlistItem = {
   category: string | null;
   tags: string[] | null;
   stock: number;
+  /** Set when added from PDP so quick-add can require PDP for options */
+  has_variants?: boolean;
 };
 
 function notify() {
@@ -41,6 +43,7 @@ function toItem(
     | "base_price"
     | "compare_at_price"
     | "sale_ends_at"
+    | "has_variants"
   >,
 ): WishlistItem {
   return {
@@ -56,6 +59,7 @@ function toItem(
     category: p.category ?? null,
     tags: p.tags ?? null,
     stock: p.stock,
+    has_variants: p.has_variants,
   };
 }
 
@@ -105,9 +109,11 @@ export function toggleWishlist(
     | "category"
     | "tags"
     | "stock"
+    | "image_urls"
     | "base_price"
     | "compare_at_price"
     | "sale_ends_at"
+    | "has_variants"
   >,
 ): boolean {
   const item = toItem(p);
@@ -142,5 +148,6 @@ export function wishlistItemToProduct(w: WishlistItem): Product {
     category: w.category,
     tags: w.tags,
     stock: w.stock,
+    has_variants: w.has_variants,
   };
 }

@@ -7,11 +7,16 @@ export const SAVED_FOR_LATER_CHANGED_EVENT = "recengine-saved-for-later";
 
 export type SavedForLaterLine = {
   product_id: string;
+  variant_id?: string | null;
   name: string;
   price: number;
   image_url: string | null;
   qty: number;
 };
+
+export function savedLineKey(line: Pick<SavedForLaterLine, "product_id" | "variant_id">): string {
+  return `${line.product_id}::${line.variant_id ?? ""}`;
+}
 
 function notify() {
   if (typeof window === "undefined") return;
@@ -45,24 +50,36 @@ function setSaved(lines: SavedForLaterLine[]) {
   notify();
 }
 
-/** Park a cart line (full quantity) in “save for later”; dedupes by product_id and merges qty (cap 99). */
+/** Park a cart line (full quantity) in “save for later”; dedupes by product + variant and merges qty (cap 99). */
 export function addToSavedForLater(line: SavedForLaterLine) {
   const qty = Math.max(1, Math.min(99, Math.floor(line.qty)));
   const list = getSavedForLater();
-  const i = list.findIndex((x) => x.product_id === line.product_id);
+  const k = savedLineKey(line);
+  const i = list.findIndex((x) => savedLineKey(x) === k);
   let next: SavedForLaterLine[];
   if (i >= 0) {
     const merged = Math.min(99, list[i].qty + qty);
     const rest = list.filter((_, j) => j !== i);
-    next = [{ ...list[i], qty: merged, name: line.name, price: line.price, image_url: line.image_url }, ...rest];
+    next = [
+      {
+        ...list[i],
+        qty: merged,
+        name: line.name,
+        price: line.price,
+        image_url: line.image_url,
+        variant_id: line.variant_id ?? list[i].variant_id ?? null,
+      },
+      ...rest,
+    ];
   } else {
     next = [{ ...line, qty }, ...list].slice(0, MAX_ITEMS);
   }
   setSaved(next);
 }
 
-export function removeSavedForLater(productId: string) {
-  setSaved(getSavedForLater().filter((x) => x.product_id !== productId));
+export function removeSavedForLater(productId: string, variantId?: string | null) {
+  const k = savedLineKey({ product_id: productId, variant_id: variantId ?? null });
+  setSaved(getSavedForLater().filter((x) => savedLineKey(x) !== k));
 }
 
 /** Reuse cart merge rules: add qty into active cart from a saved row shape. */

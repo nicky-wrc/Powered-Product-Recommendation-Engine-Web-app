@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.product_variant import ProductVariant
 
 
 class Product(Base):
@@ -39,6 +40,13 @@ class Product(Base):
     interactions: Mapped[list["Interaction"]] = relationship("Interaction", back_populates="product")
     recommendations: Mapped[list["Recommendation"]] = relationship("Recommendation", back_populates="product")
     cart_entries: Mapped[list["CartItem"]] = relationship("CartItem", back_populates="product")
+
+    variants: Mapped[list["ProductVariant"]] = relationship(
+        ProductVariant,
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by=ProductVariant.sort_order,
+    )
     order_lines: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")
     reviews: Mapped[list["ProductReview"]] = relationship(
         "ProductReview",

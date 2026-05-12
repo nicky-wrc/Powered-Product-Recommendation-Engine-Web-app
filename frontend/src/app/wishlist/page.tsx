@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
@@ -14,6 +15,7 @@ import { getWishlist, removeFromWishlist, wishlistItemToProduct, WISHLIST_CHANGE
 export default function WishlistPage() {
   const [items, setItems] = useState<WishlistItem[]>([]);
   const { confirm } = useAppModal();
+  const router = useRouter();
 
   useEffect(() => {
     const sync = () => queueMicrotask(() => setItems(getWishlist()));
@@ -31,6 +33,10 @@ export default function WishlistPage() {
     });
     if (!ok) return;
     const t = getToken();
+    if (w.has_variants) {
+      router.push(`/products/${w.id}`);
+      return;
+    }
     const p = wishlistItemToProduct(w);
     await addProductToCart(t, p, 1);
     if (t) {

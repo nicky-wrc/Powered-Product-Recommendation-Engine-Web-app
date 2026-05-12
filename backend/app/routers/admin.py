@@ -16,6 +16,7 @@ from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
+from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
 from app.schemas.products import (
@@ -59,8 +60,16 @@ def _admin_product_detail(db: Session, p: Product) -> AdminProductDetailResponse
         ).all(),
     )
     urls = [i.image_url for i in imgs] or ([p.image_url] if p.image_url else [])
+    
+    variant_rows = list(
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == p.id)
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
+        ).all(),
+    )
     return AdminProductDetailResponse(
-        product=product_public(p, gallery_urls=urls),
+        product=product_public(p, gallery_urls=urls, variants_for_detail=variant_rows or None),
         images=[ProductGalleryRow.model_validate(i) for i in imgs],
     )
 
@@ -160,6 +169,8 @@ def update_product(
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
     data = body.model_dump(exclude_unset=True)
+    variants_payload = data.pop("variants", None)
+
     img_count = int(
         db.scalar(select(func.count()).select_from(ProductImage).where(ProductImage.product_id == product_id)) or 0,
     )
@@ -203,9 +214,46 @@ def update_product(
     if "sale_ends_at" in data:
         p.sale_ends_at = data["sale_ends_at"]
     _validate_product_flash(p)
+    if variants_payload is not None:
+        cur = {v.id: v for v in db.scalars(select(ProductVariant).where(ProductVariant.product_id == product_id)).all()}
+        incoming_with_id = {s["id"] for s in variants_payload if s.get("id")}
+        for vid, v in cur.items():
+            if vid not in incoming_with_id:
+                db.delete(v)
+        for spec in variants_payload:
+            vid = spec.get("id")
+            label = str(spec["label"]).strip()
+            price_d = Decimal(str(spec["price"]))
+            stock_i = int(spec["stock"])
+            so = int(spec.get("sort_order") or 0)
+            opts = spec.get("options")
+            if vid:
+                if vid not in cur:
+                    raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown variant id {vid}")
+                v = cur[vid]
+                v.label = label
+                v.price = price_d
+                v.stock = stock_i
+                v.sort_order = so
+                v.options = opts
+            else:
+                db.add(
+                    ProductVariant(
+                        product_id=p.id,
+                        label=label,
+                        price=price_d,
+                        stock=stock_i,
+                        sort_order=so,
+                        options=opts,
+                    ),
+                )
+        db.flush()
     db.commit()
     db.refresh(p)
-    return product_public(p)
+    vrows = list(
+        db.scalars(select(ProductVariant).where(ProductVariant.product_id == p.id)).all(),
+    )
+    return product_public(p, variants_for_detail=vrows if vrows else None)
 
 
 @router.get("/products/{product_id}/detail", response_model=AdminProductDetailResponse)

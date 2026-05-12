@@ -20,6 +20,7 @@ from app.models import (
     ProductImage,
     ProductQuestion,
     ProductReview,
+    ProductVariant,
     Recommendation,
     User,
     UserAddress,

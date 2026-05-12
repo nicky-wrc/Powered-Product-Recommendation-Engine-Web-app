@@ -30,6 +30,14 @@ export function formatNetworkError(error: unknown): string {
   return "Network error";
 }
 
+export type ProductVariant = {
+  id: string;
+  label: string;
+  price: number;
+  stock: number;
+  options?: Record<string, string> | null;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -49,6 +57,8 @@ export type Product = {
   /** Ordered gallery for PDP; list APIs may repeat [image_url] for compatibility. */
   image_urls?: string[];
   stock: number;
+  has_variants?: boolean;
+  variants?: ProductVariant[];
 };
 
 /** True for images stored under our static mount (use with next/image unoptimized in dev/proxy setups). */
@@ -678,7 +688,19 @@ export type AdminProductCreate = {
   sale_ends_at?: string | null;
 };
 
-export type AdminProductUpdate = Partial<AdminProductCreate>;
+/** Upsert rows for PUT /admin/products/:id when replacing variant list (order = sort_order). */
+export type AdminProductVariantUpsert = {
+  id?: string | null;
+  label: string;
+  price: number;
+  stock: number;
+  sort_order?: number;
+  options?: Record<string, string> | null;
+};
+
+export type AdminProductUpdate = Partial<AdminProductCreate> & {
+  variants?: AdminProductVariantUpsert[];
+};
 
 export async function adminUploadProductImage(token: string, file: File): Promise<{ url: string }> {
   const fd = new FormData();
@@ -814,7 +836,13 @@ export async function postEvent(
 }
 
 export type CartResponse = {
-  items: { product: Product; quantity: number }[];
+  items: {
+    product: Product;
+    quantity: number;
+    variant_id?: string | null;
+    variant_label?: string | null;
+    unit_price: number;
+  }[];
   item_count: number;
 };
 
@@ -827,21 +855,34 @@ export async function fetchCart(token: string): Promise<CartResponse> {
   return r.json();
 }
 
-export async function postCartItem(token: string, productId: string, quantity: number): Promise<CartResponse> {
+export async function postCartItem(
+  token: string,
+  productId: string,
+  quantity: number,
+  variantId?: string | null,
+): Promise<CartResponse> {
+  const body: Record<string, unknown> = { product_id: productId, quantity };
+  if (variantId) body.variant_id = variantId;
   const r = await fetch(`${API_BASE}/api/cart/items`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ product_id: productId, quantity }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
   return r.json();
 }
 
-export async function patchCartItem(token: string, productId: string, quantity: number): Promise<CartResponse> {
-  const r = await fetch(`${API_BASE}/api/cart/items/${productId}`, {
+export async function patchCartItem(
+  token: string,
+  productId: string,
+  quantity: number,
+  variantId?: string | null,
+): Promise<CartResponse> {
+  const q = variantId ? `?variant_id=${encodeURIComponent(variantId)}` : "";
+  const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -853,8 +894,13 @@ export async function patchCartItem(token: string, productId: string, quantity: 
   return r.json();
 }
 
-export async function deleteCartItem(token: string, productId: string): Promise<CartResponse> {
-  const r = await fetch(`${API_BASE}/api/cart/items/${productId}`, {
+export async function deleteCartItem(
+  token: string,
+  productId: string,
+  variantId?: string | null,
+): Promise<CartResponse> {
+  const q = variantId ? `?variant_id=${encodeURIComponent(variantId)}` : "";
+  const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -871,7 +917,14 @@ export type OrderPublic = {
   gift_wrap: boolean;
   gift_message: string | null;
   created_at: string;
-  items: { product_id: string; product_name: string; quantity: number; unit_price: number }[];
+  items: {
+    product_id: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    variant_id?: string | null;
+    variant_label?: string | null;
+  }[];
 };
 
 export type OrderCheckoutOptions = {
@@ -882,7 +935,7 @@ export type OrderCheckoutOptions = {
 
 export async function postOrder(
   token: string,
-  items: { product_id: string; quantity: number }[],
+  items: { product_id: string; quantity: number; variant_id?: string | null }[],
   options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
   const { payment_method = "direct", gift_wrap = false, gift_message = null } = options;
@@ -913,7 +966,7 @@ export async function fetchPaymentStatus(): Promise<PaymentStatus> {
 
 export async function createStripeCheckoutSession(
   token: string,
-  items: { product_id: string; quantity: number }[],
+  items: { product_id: string; quantity: number; variant_id?: string | null }[],
   options: Pick<OrderCheckoutOptions, "gift_wrap" | "gift_message"> = {},
 ): Promise<{ url: string }> {
   const { gift_wrap = false, gift_message = null } = options;

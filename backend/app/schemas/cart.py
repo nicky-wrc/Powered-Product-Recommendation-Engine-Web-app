@@ -7,6 +7,7 @@ from app.schemas.products import ProductPublic
 
 class CartItemAdd(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: int = Field(default=1, ge=1, le=99)
 
 
@@ -17,6 +18,9 @@ class CartItemPatch(BaseModel):
 class CartLineResponse(BaseModel):
     product: ProductPublic
     quantity: int
+    variant_id: UUID | None = None
+    variant_label: str | None = None
+    unit_price: float
 
 
 class CartResponse(BaseModel):

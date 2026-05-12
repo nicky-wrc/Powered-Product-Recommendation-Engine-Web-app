@@ -34,6 +34,7 @@ import {
 
 type Line = {
   product_id: string;
+  variant_id?: string | null;
   name: string;
   price: number;
   image_url: string | null;
@@ -74,8 +75,9 @@ export default function CartPage() {
             setLines(
               c.items.map((i) => ({
                 product_id: i.product.id,
-                name: i.product.name,
-                price: i.product.price,
+                variant_id: i.variant_id ?? null,
+                name: i.variant_label ? `${i.product.name} — ${i.variant_label}` : i.product.name,
+                price: i.unit_price,
                 image_url: i.product.image_url,
                 qty: i.quantity,
               })),
@@ -109,11 +111,11 @@ export default function CartPage() {
     }
     try {
       if (t) {
-        if (next < 1) await deleteCartItem(t, line.product_id);
-        else await patchCartItem(t, line.product_id, next);
+        if (next < 1) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
+        else await patchCartItem(t, line.product_id, next, line.variant_id ?? null);
       } else {
-        if (next < 1) removeLine(line.product_id);
-        else updateLineQty(line.product_id, next);
+        if (next < 1) removeLine(line.product_id, line.variant_id ?? null);
+        else updateLineQty(line.product_id, next, line.variant_id ?? null);
       }
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
@@ -133,8 +135,8 @@ export default function CartPage() {
     const t = getToken();
     setErr(null);
     try {
-      if (t) await deleteCartItem(t, line.product_id);
-      else removeLine(line.product_id);
+      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
+      else removeLine(line.product_id, line.variant_id ?? null);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Remove failed");
@@ -154,13 +156,14 @@ export default function CartPage() {
     try {
       addToSavedForLater({
         product_id: line.product_id,
+        variant_id: line.variant_id ?? null,
         name: line.name,
         price: line.price,
         image_url: line.image_url,
         qty: line.qty,
       });
-      if (t) await deleteCartItem(t, line.product_id);
-      else removeLine(line.product_id);
+      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
+      else removeLine(line.product_id, line.variant_id ?? null);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save for later");
@@ -178,9 +181,14 @@ export default function CartPage() {
     const t = getToken();
     setErr(null);
     try {
-      if (t) await postCartItem(t, row.product_id, row.qty);
-      else addOrMergeLine(savedLineAsProduct(row), row.qty);
-      removeSavedForLater(row.product_id);
+      if (t) await postCartItem(t, row.product_id, row.qty, row.variant_id ?? null);
+      else
+        addOrMergeLine(savedLineAsProduct(row), row.qty, {
+          variantId: row.variant_id ?? null,
+          lineName: row.name,
+          linePrice: row.price,
+        });
+      removeSavedForLater(row.product_id, row.variant_id ?? null);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not move to cart");
@@ -196,7 +204,7 @@ export default function CartPage() {
       variant: "danger",
     });
     if (!ok) return;
-    removeSavedForLater(row.product_id);
+    removeSavedForLater(row.product_id, row.variant_id ?? null);
   }
 
   async function checkout() {
@@ -221,7 +229,11 @@ export default function CartPage() {
     try {
       await postOrder(
         token,
-        lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
+        lines.map((l) => ({
+          product_id: l.product_id,
+          quantity: l.qty,
+          variant_id: l.variant_id ?? null,
+        })),
         {
           payment_method: "direct",
           gift_wrap: giftWrap,
@@ -262,7 +274,11 @@ export default function CartPage() {
     try {
       const { url } = await createStripeCheckoutSession(
         token,
-        lines.map((l) => ({ product_id: l.product_id, quantity: l.qty })),
+        lines.map((l) => ({
+          product_id: l.product_id,
+          quantity: l.qty,
+          variant_id: l.variant_id ?? null,
+        })),
         {
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
@@ -325,7 +341,7 @@ export default function CartPage() {
                       stock: 0,
                     });
                     return (
-                      <li key={line.product_id} className="flex gap-4 p-4">
+                      <li key={`${line.product_id}-${line.variant_id ?? ""}`} className="flex gap-4 p-4">
                         <Link
                           href={`/products/${line.product_id}`}
                           className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"
@@ -513,7 +529,7 @@ export default function CartPage() {
                       stock: 0,
                     });
                     return (
-                      <li key={row.product_id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
+                      <li key={`${row.product_id}-${row.variant_id ?? ""}`} className="flex gap-4 py-4 first:pt-0 last:pb-0">
                         <Link
                           href={`/products/${row.product_id}`}
                           className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"

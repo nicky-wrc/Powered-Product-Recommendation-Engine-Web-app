@@ -18,12 +18,34 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.order import Order
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
 from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout
 from app.services.product_pricing import effective_unit_price
+from app.services.product_variants import product_ids_requiring_variant
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+
+
+def _merge_order_lines(items: list[OrderLineIn]) -> list[tuple[UUID, UUID | None, int]]:
+    merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
+    for row in items:
+        merged[(row.product_id, row.variant_id)] += row.quantity
+    return [(pid, vid, q) for (pid, vid), q in merged.items()]
+
+
+def _parse_meta_items(raw: str) -> list[tuple[UUID, UUID | None, int]]:
+    pairs: list = json.loads(raw)
+    out: list[tuple[UUID, UUID | None, int]] = []
+    for item in pairs:
+        if len(item) == 2:
+            out.append((UUID(str(item[0])), None, int(item[1])))
+        else:
+            pid_s, vid_s, q = item[0], item[1], item[2]
+            vid = UUID(str(vid_s)) if vid_s else None
+            out.append((UUID(str(pid_s)), vid, int(q)))
+    return out
 
 
 def _gift_opts_from_metadata(meta: dict) -> tuple[bool, str | None]:
@@ -65,36 +87,63 @@ def create_checkout_session(
             "Stripe is not configured (set STRIPE_SECRET_KEY in backend .env).",
         )
 
-    qty_map: dict[UUID, int] = defaultdict(int)
-    for row in body.items:
-        qty_map[row.product_id] += row.quantity
-
-    pid_list = sorted(qty_map.keys(), key=lambda x: str(x))
+    lines = _merge_order_lines(body.items)
+    pid_set = {pid for pid, _vid, _q in lines}
     products: dict[UUID, Product] = {}
-    for pid in pid_list:
+    for pid in sorted(pid_set, key=lambda x: str(x)):
         p = db.scalar(select(Product).where(Product.id == pid))
         if p is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
         products[pid] = p
 
-    for pid, q in qty_map.items():
-        if products[pid].stock < q:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"Insufficient stock for {products[pid].name}",
-            )
+    need_variants = product_ids_requiring_variant(db, pid_set)
+    variant_rows: dict[UUID, ProductVariant] = {}
+    for pid, vid, q in lines:
+        if vid is not None:
+            v = db.scalar(select(ProductVariant).where(ProductVariant.id == vid))
+            if v is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Product variant not found")
+            variant_rows[vid] = v
+
+    for pid, vid, q in lines:
+        p = products[pid]
+        if pid in need_variants:
+            if vid is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Select a variant for {p.name}")
+            v = variant_rows[vid]
+            if v.product_id != pid:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Variant does not match product")
+            if v.stock < q:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"Insufficient stock for {p.name} ({v.label})",
+                )
+        else:
+            if vid is not None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "This product has no variants")
+            if p.stock < q:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    f"Insufficient stock for {p.name}",
+                )
 
     line_items: list[dict] = []
-    for pid in pid_list:
+    for pid, vid, q in sorted(lines, key=lambda x: (str(x[0]), str(x[1] or ""), x[2])):
         p = products[pid]
-        q = qty_map[pid]
+        if vid is not None:
+            v = variant_rows[vid]
+            display = f"{p.name} — {v.label}"
+            unit = v.price
+        else:
+            display = p.name
+            unit = effective_unit_price(p)
         line_items.append(
             {
                 "quantity": q,
                 "price_data": {
                     "currency": "usd",
-                    "unit_amount": _to_cents(effective_unit_price(p)),
-                    "product_data": {"name": p.name},
+                    "unit_amount": _to_cents(unit),
+                    "product_data": {"name": display[:120]},
                 },
             },
         )
@@ -111,7 +160,10 @@ def create_checkout_session(
             },
         )
 
-    compact_items = json.dumps([[str(pid), qty_map[pid]] for pid in pid_list], separators=(",", ":"))
+    compact_items = json.dumps(
+        [[str(pid), str(vid) if vid else "", q] for pid, vid, q in lines],
+        separators=(",", ":"),
+    )
     if len(compact_items) > 450:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -176,8 +228,7 @@ def sync_checkout_session(
     if not raw_items:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing cart metadata on session.")
     try:
-        pairs: list[list] = json.loads(raw_items)
-        qty_map = {UUID(str(p)): int(q) for p, q in pairs}
+        lines = _parse_meta_items(raw_items)
     except (json.JSONDecodeError, ValueError, TypeError) as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cart metadata.") from e
 
@@ -187,7 +238,7 @@ def sync_checkout_session(
         order = fulfill_checkout(
             db,
             user.id,
-            qty_map,
+            lines,
             payment_method="stripe",
             stripe_checkout_session_id=session.id,
             gift_wrap=gift_wrap,
@@ -227,13 +278,12 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
         return
     try:
         user_id = UUID(uid_s)
-        pairs: list[list] = json.loads(raw_items)
-        qty_map = {UUID(str(p)): int(q) for p, q in pairs}
+        lines = _parse_meta_items(raw_items)
         gift_wrap, gift_message = _gift_opts_from_metadata(meta)
         fulfill_checkout(
             db,
             user_id,
-            qty_map,
+            lines,
             payment_method="stripe",
             stripe_checkout_session_id=session.id,
             gift_wrap=gift_wrap,

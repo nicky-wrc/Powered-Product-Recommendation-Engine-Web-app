@@ -112,6 +112,8 @@ const INVENTORY_PAGE_SIZE = 25;
 
 type CreatePendingImage = { key: string; url: string };
 
+type VariantDraftRow = { key: string; serverId?: string; label: string; price: string; stock: string };
+
 function newCreateImageKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
@@ -138,6 +140,7 @@ export function AdminProductManager({ token, mode }: Props) {
   const [createUrlDraft, setCreateUrlDraft] = useState("");
   const [form, setForm] = useState(emptyDraft);
   const [editGallery, setEditGallery] = useState<ProductGalleryRow[]>([]);
+  const [editVariants, setEditVariants] = useState<VariantDraftRow[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryBusy, setGalleryBusy] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
@@ -237,6 +240,15 @@ export function AdminProductManager({ token, mode }: Props) {
       stock: String(prod.stock),
     });
     setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
+    setEditVariants(
+      (prod.variants ?? []).map((v) => ({
+        key: v.id,
+        serverId: v.id,
+        label: v.label,
+        price: String(v.price),
+        stock: String(v.stock),
+      })),
+    );
   }
 
   function startEdit(p: Product) {
@@ -255,6 +267,7 @@ export function AdminProductManager({ token, mode }: Props) {
       stock: String(p.stock),
     });
     setEditGallery([]);
+    setEditVariants([]);
     setGalleryLoading(true);
     setMsg(null);
     setErr(null);
@@ -278,6 +291,7 @@ export function AdminProductManager({ token, mode }: Props) {
     setEditingId(null);
     setForm(emptyDraft);
     setEditGallery([]);
+    setEditVariants([]);
     setGalleryLoading(false);
   }
 
@@ -373,6 +387,29 @@ export function AdminProductManager({ token, mode }: Props) {
       if (editGallery.length === 0) {
         body.image_url = form.image_url.trim() || null;
       }
+
+      const variantParsed = editVariants
+        .map((r) => {
+          const label = r.label.trim();
+          const price = Number(r.price);
+          const stock = Math.trunc(Number(r.stock));
+          return { serverId: r.serverId, label, price, stock };
+        })
+        .filter((r) => r.label.length > 0);
+
+      for (const r of variantParsed) {
+        if (!Number.isFinite(r.price) || r.price < 0) throw new Error("ราคา variant ไม่ถูกต้อง");
+        if (!Number.isFinite(r.stock) || r.stock < 0) throw new Error("จำนวน variant ไม่ถูกต้อง");
+      }
+
+      body.variants = variantParsed.map((r, i) => ({
+        ...(r.serverId ? { id: r.serverId } : {}),
+        label: r.label,
+        price: r.price,
+        stock: r.stock,
+        sort_order: i,
+      }));
+
       await adminUpdateProduct(token, editingId, body);
       setMsg("บันทึกการแก้ไขแล้ว");
       cancelEdit();
@@ -1001,6 +1038,91 @@ export function AdminProductManager({ token, mode }: Props) {
                           placeholder="แท็กใหม่ — Enter"
                           hint="Enter / comma เพิ่มแท็ก · วางข้อความหลายแท็กได้"
                         />
+                      </div>
+                      <div className="sm:col-span-2 rounded-xl border border-dashed border-stone-300 bg-stone-50/50 p-4 dark:border-zinc-600 dark:bg-zinc-900/30">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                            Variants — บันทึกครั้งนี้จะแทนที่รายการทั้งหมด (เว้นว่าง = ไม่มีตัวเลือก)
+                          </p>
+                          <button
+                            type="button"
+                            disabled={busyId === editingId || uploading !== null}
+                            onClick={() =>
+                              setEditVariants((rows) => [
+                                ...rows,
+                                { key: newCreateImageKey(), label: "", price: "0", stock: "0" },
+                              ])
+                            }
+                            className="rounded-lg border border-teal-300 bg-white px-2 py-1 text-[11px] font-semibold text-teal-800 dark:border-teal-700 dark:bg-zinc-900 dark:text-teal-200"
+                          >
+                            + เพิ่ม variant
+                          </button>
+                        </div>
+                        {editVariants.length === 0 ? (
+                          <p className="text-xs text-stone-500 dark:text-stone-400">
+                            ยังไม่มี variant — เหมาะกับสินค้ามี SKU เดียว
+                          </p>
+                        ) : (
+                          <ul className="flex flex-col gap-2">
+                            {editVariants.map((row, idx) => (
+                              <li
+                                key={row.key}
+                                className="flex flex-wrap items-end gap-2 rounded-lg border border-stone-200/80 bg-white/80 px-2 py-2 dark:border-zinc-700 dark:bg-zinc-950/60"
+                              >
+                                <span className="self-center text-[10px] font-medium tabular-nums text-stone-400">
+                                  {idx + 1}.
+                                </span>
+                                <label className="min-w-[8rem] flex-1">
+                                  <span className="sr-only">ชื่อ variant</span>
+                                  <input
+                                    value={row.label}
+                                    onChange={(e) =>
+                                      setEditVariants((rs) =>
+                                        rs.map((x) => (x.key === row.key ? { ...x, label: e.target.value } : x)),
+                                      )
+                                    }
+                                    placeholder="เช่น Size L · Red"
+                                    className="w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                                  />
+                                </label>
+                                <label className="w-24">
+                                  <span className="text-[10px] text-stone-500 dark:text-stone-400">ราคา</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={row.price}
+                                    onChange={(e) =>
+                                      setEditVariants((rs) =>
+                                        rs.map((x) => (x.key === row.key ? { ...x, price: e.target.value } : x)),
+                                      )
+                                    }
+                                    className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                                  />
+                                </label>
+                                <label className="w-20">
+                                  <span className="text-[10px] text-stone-500 dark:text-stone-400">สต็อก</span>
+                                  <input
+                                    inputMode="numeric"
+                                    value={row.stock}
+                                    onChange={(e) =>
+                                      setEditVariants((rs) =>
+                                        rs.map((x) => (x.key === row.key ? { ...x, stock: e.target.value } : x)),
+                                      )
+                                    }
+                                    className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={busyId === editingId}
+                                  onClick={() => setEditVariants((rs) => rs.filter((x) => x.key !== row.key))}
+                                  className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                                >
+                                  ลบ
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                       <label className="sm:col-span-2 block">
                         <span className="mb-1 block text-[11px] font-medium text-stone-500 dark:text-stone-400">

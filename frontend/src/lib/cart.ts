@@ -5,11 +5,17 @@ export const CART_CHANGED_EVENT = "recengine-cart";
 
 export type CartLine = {
   product_id: string;
+  variant_id?: string | null;
+  /** Display: product name + optional variant */
   name: string;
   price: number;
   image_url: string | null;
   qty: number;
 };
+
+function lineKey(productId: string, variantId: string | null | undefined): string {
+  return `${productId}::${variantId ?? ""}`;
+}
 
 function notifyCartChanged() {
   if (typeof window === "undefined") return;
@@ -57,18 +63,24 @@ export function cartItemCount(): number {
 export function addOrMergeLine(
   product: Pick<Product, "id" | "name" | "price" | "image_url">,
   qty = 1,
+  opts?: { variantId?: string | null; lineName?: string; linePrice?: number },
 ) {
   const add = Math.max(1, Math.min(qty, 99));
+  const vid = opts?.variantId ?? null;
+  const displayName = opts?.lineName ?? product.name;
+  const unitPrice = opts?.linePrice ?? product.price;
   const cart = getCart();
-  const i = cart.findIndex((l) => l.product_id === product.id);
+  const k = lineKey(product.id, vid);
+  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null) === k);
   if (i >= 0) {
     const nextQty = Math.min(99, cart[i].qty + add);
     cart[i] = { ...cart[i], qty: nextQty };
   } else {
     cart.push({
       product_id: product.id,
-      name: product.name,
-      price: product.price,
+      variant_id: vid ?? undefined,
+      name: displayName,
+      price: unitPrice,
       image_url: product.image_url,
       qty: add,
     });
@@ -76,9 +88,10 @@ export function addOrMergeLine(
   setCart(cart);
 }
 
-export function updateLineQty(productId: string, qty: number) {
+export function updateLineQty(productId: string, qty: number, variantId?: string | null) {
   const cart = getCart();
-  const i = cart.findIndex((l) => l.product_id === productId);
+  const k = lineKey(productId, variantId ?? null);
+  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null) === k);
   if (i < 0) return;
   if (qty < 1) {
     cart.splice(i, 1);
@@ -88,8 +101,9 @@ export function updateLineQty(productId: string, qty: number) {
   setCart(cart);
 }
 
-export function removeLine(productId: string) {
-  setCart(getCart().filter((l) => l.product_id !== productId));
+export function removeLine(productId: string, variantId?: string | null) {
+  const k = lineKey(productId, variantId ?? null);
+  setCart(getCart().filter((l) => lineKey(l.product_id, l.variant_id ?? null) !== k));
 }
 
 export function cartSubtotal(lines: CartLine[]): number {

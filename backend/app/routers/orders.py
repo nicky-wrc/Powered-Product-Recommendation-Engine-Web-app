@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -22,15 +22,16 @@ def create_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrderPublic:
-    qty_map = defaultdict(int)
+    merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
     for row in body.items:
-        qty_map[row.product_id] += row.quantity
+        merged[(row.product_id, row.variant_id)] += row.quantity
+    lines = [(pid, vid, q) for (pid, vid), q in merged.items()]
 
     try:
         order = fulfill_checkout(
             db,
             user.id,
-            dict(qty_map),
+            lines,
             payment_method=body.payment_method or "direct",
             stripe_checkout_session_id=None,
             gift_wrap=body.gift_wrap,
@@ -78,7 +79,14 @@ def list_my_orders(
         stmt = stmt.where(Order.payment_method.isnot(None), Order.payment_method.ilike(f"%{pm}%"))
     if q is not None and (term := q.strip()):
         stmt = stmt.where(
-            Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_name.ilike(f"%{term}%"))),
+            Order.id.in_(
+                select(OrderItem.order_id).where(
+                    or_(
+                        OrderItem.product_name.ilike(f"%{term}%"),
+                        OrderItem.variant_label.ilike(f"%{term}%"),
+                    ),
+                ),
+            ),
         )
     if from_date is not None:
         start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)

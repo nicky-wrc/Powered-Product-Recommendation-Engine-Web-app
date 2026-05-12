@@ -21,7 +21,18 @@ from app.services.recommendation_engine import (
     purchased_product_ids,
 )
 
+from app.services.product_variants import variant_aggregates_for_product_ids
+
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
+
+
+def _products_public_with_variants(db: Session, rows: list[Product]) -> list[ProductPublic]:
+    ids = [p.id for p in rows]
+    agg = variant_aggregates_for_product_ids(db, ids)
+    return [
+        product_public(p, variant_aggregate=agg.get(p.id) if agg.get(p.id, (0, 0, 0))[0] > 0 else None)
+        for p in rows
+    ]
 
 
 def _score_subquery():
@@ -95,7 +106,7 @@ def _feed_for_user(
         rows, fb = _fill_from_popular(db, rows, limit=limit, exclude=exclude)
         fallback_popular = fb
         return RecommendationFeed(
-            products=[product_public(p) for p in rows],
+            products=_products_public_with_variants(db, rows),
             meta=RecommendationMeta(
                 mode=mode,
                 used_collaborative=False,
@@ -112,7 +123,7 @@ def _feed_for_user(
         rows, fb = _fill_from_popular(db, rows, limit=limit, exclude=exclude)
         fallback_popular = fb
         return RecommendationFeed(
-            products=[product_public(p) for p in rows],
+            products=_products_public_with_variants(db, rows),
             meta=RecommendationMeta(
                 mode=mode,
                 used_collaborative=used_collaborative,
@@ -129,7 +140,7 @@ def _feed_for_user(
         rows, fb = _fill_from_popular(db, rows, limit=limit, exclude=exclude)
         fallback_popular = fb
         return RecommendationFeed(
-            products=[product_public(p) for p in rows],
+            products=_products_public_with_variants(db, rows),
             meta=RecommendationMeta(
                 mode=mode,
                 used_collaborative=False,
@@ -145,7 +156,7 @@ def _feed_for_user(
     rows, fb = _fill_from_popular(db, rows, limit=limit, exclude=exclude)
     fallback_popular = fb
     return RecommendationFeed(
-        products=[product_public(p) for p in rows],
+        products=_products_public_with_variants(db, rows),
         meta=RecommendationMeta(
             mode="hybrid",
             used_collaborative=used_collaborative,
@@ -160,11 +171,12 @@ def popular(
     limit: int = Query(12, ge=1, le=50),
     db: Session = Depends(get_db),
 ) -> list[ProductPublic]:
-    key = f"rec:popular:v1:{limit}"
+    key = f"rec:popular:v2:{limit}"
     cached = cache_get_json(key)
     if cached is not None:
         return [ProductPublic.model_validate(x) for x in cached]
-    payload = [product_public(p).model_dump(mode="json") for p in _popular_products(db, limit)]
+    prows = _popular_products(db, limit)
+    payload = [p.model_dump(mode="json") for p in _products_public_with_variants(db, prows)]
     cache_set_json(key, payload, _POPULAR_CACHE_TTL)
     return [ProductPublic.model_validate(x) for x in payload]
 
@@ -176,7 +188,7 @@ def for_me(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RecommendationFeed:
-    key = f"rec:me:v1:{user.id}:{mode}:{limit}"
+    key = f"rec:me:v2:{user.id}:{mode}:{limit}"
     cached = cache_get_json(key)
     if cached is not None:
         return RecommendationFeed.model_validate(cached)

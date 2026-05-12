@@ -8,6 +8,7 @@ from app.models.order import Order
 
 class OrderLineIn(BaseModel):
     product_id: UUID
+    variant_id: UUID | None = None
     quantity: int = Field(ge=1, le=99)
 
 
@@ -25,6 +26,8 @@ class OrderItemPublic(BaseModel):
     product_name: str
     quantity: int
     unit_price: float
+    variant_id: UUID | None = None
+    variant_label: str | None = None
 
 
 class OrderPublic(BaseModel):
@@ -57,6 +60,8 @@ def order_public(o: Order) -> OrderPublic:
                 product_name=row.product_name,
                 quantity=row.quantity,
                 unit_price=float(row.unit_price),
+                variant_id=getattr(row, "variant_id", None),
+                variant_label=getattr(row, "variant_label", None),
             )
             for row in o.items
         ],

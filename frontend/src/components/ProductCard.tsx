@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { FlashSaleCountdown } from "@/components/FlashSaleCountdown";
 import { getToken, postEvent, isLocalUploadImageUrl, productImageUrl, type Product } from "@/lib/api";
@@ -16,10 +17,15 @@ type Props = { p: Product; priority?: boolean };
 export function ProductCard({ p, priority = false }: Props) {
   const img = productImageUrl(p);
   const { confirm } = useAppModal();
+  const router = useRouter();
 
   async function quickAdd(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    if (p.has_variants) {
+      router.push(`/products/${p.id}`);
+      return;
+    }
     const ok = await confirm({
       title: "เพิ่มลงตะกร้า",
       message: `เพิ่ม "${p.name}" จำนวน 1 ชิ้น ลงตะกร้า?`,

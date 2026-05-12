@@ -38,6 +38,12 @@ export function ReorderOrderButton({ order }: Props) {
             image_url: null,
           },
           it.quantity,
+          {
+            variantId: it.variant_id ?? null,
+            ...(it.variant_label
+              ? { lineName: `${it.product_name} — ${it.variant_label}` }
+              : {}),
+          },
         );
       }
       router.push("/cart");

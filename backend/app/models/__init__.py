@@ -6,6 +6,7 @@ from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
+from app.models.product_variant import ProductVariant
 from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.models.user_address import UserAddress
@@ -15,6 +16,7 @@ __all__ = [
     "UserAddress",
     "Product",
     "ProductImage",
+    "ProductVariant",
     "ProductReview",
     "ProductQuestion",
     "ProductAnswer",

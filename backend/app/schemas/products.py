@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -8,30 +9,107 @@ from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
 from app.services.product_pricing import effective_unit_price, flash_sale_active
 
 
+class ProductVariantPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    label: str
+    price: float
+    stock: int
+    options: dict[str, str] | None = None
+
+
 class ProductPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     name: str
     description: str | None
-    price: float  # effective (customer pays)
-    base_price: float  # catalog / list price in DB
-    compare_at_price: float | None = None  # equals base_price when flash deal is active (for strikethrough)
-    sale_price: float | None = None  # promo price from DB (admin / detail)
-    sale_ends_at: datetime | None = None  # promo end (may be past)
+    price: float  # effective storefront unit (min variant or parent effective)
+    base_price: float  # catalog / list price in DB (parent); with variants, parent list price
+    compare_at_price: float | None = None
+    sale_price: float | None = None
+    sale_ends_at: datetime | None = None
     category: str | None
     tags: list[str] | None
     image_url: str | None
     image_urls: list[str] = Field(default_factory=list)
     stock: int
     video_url: str | None = None
+    has_variants: bool = False
+    variants: list[ProductVariantPublic] = Field(default_factory=list)
 
 
-def product_public(p: Product, *, gallery_urls: list[str] | None = None) -> ProductPublic:
+def product_public(
+    p: Product,
+    *,
+    gallery_urls: list[str] | None = None,
+    variant_aggregate: tuple[int, float, int] | None = None,
+    variants_for_detail: list | None = None,
+) -> ProductPublic:
+    """variant_aggregate: (count, min_price, sum_stock) for list/cards. variants_for_detail: ORM rows for PDP."""
     if gallery_urls is not None:
         urls = list(gallery_urls)
     else:
         urls = [p.image_url] if p.image_url else []
+
+    v_detail_list: list = list(variants_for_detail) if variants_for_detail else []
+    if v_detail_list:
+        min_p = min(float(v.price) for v in v_detail_list)
+        sum_s = sum(int(v.stock) for v in v_detail_list)
+        base = float(p.price)
+        eff = Decimal(str(min_p))
+        variant_pub = [
+            ProductVariantPublic(
+                id=v.id,
+                label=v.label,
+                price=float(v.price),
+                stock=int(v.stock),
+                options=dict(v.options) if v.options else None,
+            )
+            for v in sorted(v_detail_list, key=lambda x: (x.sort_order, str(x.id)))
+        ]
+        return ProductPublic(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            price=float(eff),
+            base_price=base,
+            compare_at_price=None,
+            sale_price=None,
+            sale_ends_at=None,
+            category=p.category,
+            tags=list(p.tags) if p.tags is not None else None,
+            image_url=p.image_url,
+            image_urls=urls,
+            stock=int(sum_s),
+            video_url=p.video_url,
+            has_variants=True,
+            variants=variant_pub,
+        )
+
+    if variant_aggregate and variant_aggregate[0] > 0:
+        cnt, min_p, sum_s = variant_aggregate
+        _ = cnt
+        return ProductPublic(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            price=float(min_p),
+            base_price=float(p.price),
+            compare_at_price=None,
+            sale_price=None,
+            sale_ends_at=None,
+            category=p.category,
+            tags=list(p.tags) if p.tags is not None else None,
+            image_url=p.image_url,
+            image_urls=urls,
+            stock=int(sum_s),
+            video_url=p.video_url,
+            has_variants=True,
+            variants=[],
+        )
+
     active = flash_sale_active(p)
     eff = effective_unit_price(p)
     base = float(p.price)
@@ -50,6 +128,8 @@ def product_public(p: Product, *, gallery_urls: list[str] | None = None) -> Prod
         image_urls=urls,
         stock=p.stock,
         video_url=p.video_url,
+        has_variants=False,
+        variants=[],
     )
 
 
@@ -145,6 +225,15 @@ class ProductCreate(BaseModel):
         return out or None
 
 
+class ProductVariantUpsert(BaseModel):
+    id: UUID | None = None
+    label: str = Field(min_length=1, max_length=400)
+    price: float = Field(ge=0)
+    stock: int = Field(ge=0, default=0)
+    sort_order: int = Field(default=0)
+    options: dict[str, str] | None = None
+
+
 class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=500)
     description: str | None = None
@@ -156,6 +245,7 @@ class ProductUpdate(BaseModel):
     stock: int | None = Field(None, ge=0)
     sale_price: float | None = Field(None, ge=0)
     sale_ends_at: datetime | None = None
+    variants: list[ProductVariantUpsert] | None = None
 
     @field_validator("image_url", "video_url", mode="before")
     @classmethod
