@@ -24,7 +24,7 @@ import {
 } from "@/lib/api";
 import Image from "next/image";
 
-type Props = { token: string };
+type Props = { token: string; mode: "create" | "inventory" };
 
 type FormDraft = {
   name: string;
@@ -116,7 +116,7 @@ function newCreateImageKey(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
-export function AdminProductManager({ token }: Props) {
+export function AdminProductManager({ token, mode }: Props) {
   const { confirm } = useAppModal();
   const createFileRef = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
@@ -126,7 +126,7 @@ export function AdminProductManager({ token }: Props) {
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(mode === "inventory");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -158,6 +158,7 @@ export function AdminProductManager({ token }: Props) {
   }, [searchInput]);
 
   const fetchList = useCallback(async () => {
+    if (mode !== "inventory") return;
     setLoading(true);
     try {
       const uncategorized = inventoryCategoryFilter === INV_FILTER_UNCATEGORIZED;
@@ -184,14 +185,42 @@ export function AdminProductManager({ token }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, inventoryCategoryFilter, inventoryPage]);
+  }, [debouncedSearch, inventoryCategoryFilter, inventoryPage, mode]);
 
   useEffect(() => {
+    if (mode !== "create") return;
+    let cancelled = false;
+    fetchProductCategories()
+      .then((cats) => {
+        if (!cancelled) setCategoryOptions(cats);
+      })
+      .catch(() => {
+        if (!cancelled) setCategoryOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "inventory") return;
     const id = window.setTimeout(() => {
       void fetchList();
     }, 0);
     return () => clearTimeout(id);
-  }, [fetchList]);
+  }, [fetchList, mode]);
+
+  async function refreshAfterMutation() {
+    if (mode === "inventory") {
+      await fetchList();
+    } else {
+      try {
+        setCategoryOptions(await fetchProductCategories());
+      } catch {
+        setCategoryOptions([]);
+      }
+    }
+  }
 
   function applyAdminDetailToEditForm(detail: { product: Product; images: ProductGalleryRow[] }) {
     const prod = detail.product;
@@ -305,9 +334,7 @@ export function AdminProductManager({ token }: Props) {
             : "สร้างสินค้าแล้ว",
         );
       }
-      await fetchList();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "สร้างสินค้าไม่สำเร็จ");
+      await refreshAfterMutation();
     } finally {
       setBusyId(null);
     }
@@ -510,11 +537,12 @@ export function AdminProductManager({ token }: Props) {
 
   return (
     <div className="rounded-3xl border border-stone-200/90 bg-white/80 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/80 md:p-8">
+      {mode === "inventory" ? (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">แคตตาล็อก (แอดมิน)</h2>
+          <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">สต็อกสินค้า</h2>
           <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-            เพิ่ม แก้ไข หรือลบสินค้า — ถ้าสินค้าถูกใช้ในคำสั่งซื้อแล้วจะลบไม่ได้ (HTTP 409)
+            ค้นหา กรองหมวด แก้ไขจำนวนคงเหลือ ราคา และ Flash deal หรือลบสินค้า — หากสินค้าถูกใช้ในคำสั่งซื้อแล้วระบบจะไม่ให้ลบ (HTTP 409)
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -534,6 +562,14 @@ export function AdminProductManager({ token }: Props) {
           </button>
         </div>
       </div>
+      ) : (
+        <div>
+          <h2 className="text-lg font-bold text-stone-900 dark:text-stone-50">เพิ่มสินค้าใหม่</h2>
+          <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+            สร้างรายการใหม่ — แก้ไขจำนวนคงเหลือ ดูรายการ และลบได้ที่ «สต็อกสินค้า» ในเมนูด้านข้าง
+          </p>
+        </div>
+      )}
 
       {msg ? (
         <p className="mt-4 rounded-xl border border-emerald-200/90 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/25 dark:text-emerald-100">
@@ -546,10 +582,10 @@ export function AdminProductManager({ token }: Props) {
         </p>
       ) : null}
 
-      <div className="mt-8 flex flex-col gap-10">
+      {mode === "create" ? (
         <form
           onSubmit={submitCreate}
-          className="w-full min-w-0 space-y-4 rounded-xl border border-stone-200/90 bg-gradient-to-b from-stone-50/90 to-stone-50/40 p-5 shadow-sm ring-1 ring-stone-200/30 dark:border-zinc-700 dark:from-zinc-900/50 dark:to-zinc-950/40 dark:ring-zinc-800/50"
+          className="mt-8 w-full min-w-0 space-y-4 rounded-xl border border-stone-200/90 bg-gradient-to-b from-stone-50/90 to-stone-50/40 p-5 shadow-sm ring-1 ring-stone-200/30 dark:border-zinc-700 dark:from-zinc-900/50 dark:to-zinc-950/40 dark:ring-zinc-800/50"
         >
           <div className="space-y-0.5">
             <h3 className="text-base font-bold tracking-tight text-stone-900 dark:text-stone-50 sm:text-[1.0625rem]">
@@ -608,13 +644,15 @@ export function AdminProductManager({ token }: Props) {
                 className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
               />
             </label>
-            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
-              หมดโปรเมื่อ (local) — ต้องกรอกคู่กับราคาโปร
+            <label className="flex flex-col gap-2 sm:col-span-2 sm:flex-row sm:items-center sm:gap-4">
+              <span className="shrink-0 text-xs font-medium text-stone-700 dark:text-stone-300 sm:max-w-[min(100%,20rem)] sm:leading-snug sm:pt-0.5">
+                หมดโปรเมื่อ (local) — ต้องกรอกคู่กับราคาโปร
+              </span>
               <input
                 type="datetime-local"
                 value={createForm.sale_ends_at}
                 onChange={(e) => setCreateForm((d) => ({ ...d, sale_ends_at: e.target.value }))}
-                className="mt-1.5 w-full max-w-md rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm tabular-nums shadow-sm outline-none transition [color-scheme:light] focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100 dark:[color-scheme:dark]"
               />
             </label>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
@@ -771,8 +809,10 @@ export function AdminProductManager({ token }: Props) {
             {busyId === "__create__" ? "กำลังสร้าง…" : uploading === "create" ? "กำลังอัปโหลดรูป…" : "เพิ่มสินค้า"}
           </button>
         </form>
+      ) : null}
 
-        <section className="w-full min-h-0 space-y-4">
+      {mode === "inventory" ? (
+        <section className="mt-8 w-full min-h-0 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h3 className="text-lg font-bold text-stone-900 dark:text-stone-50">สต็อกสินค้า</h3>
@@ -927,13 +967,15 @@ export function AdminProductManager({ token }: Props) {
                           className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
                         />
                       </label>
-                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
-                        หมดโปรเมื่อ (datetime local)
+                      <label className="sm:col-span-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                        <span className="shrink-0 text-xs font-medium text-stone-700 dark:text-stone-300 sm:max-w-[min(100%,20rem)] sm:leading-snug sm:pt-0.5">
+                          หมดโปรเมื่อ (local) — ต้องกรอกคู่กับราคาโปร
+                        </span>
                         <input
                           type="datetime-local"
                           value={form.sale_ends_at}
                           onChange={(e) => setForm((f) => ({ ...f, sale_ends_at: e.target.value }))}
-                          className="mt-1 w-full max-w-md rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                          className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm tabular-nums outline-none transition [color-scheme:light] focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100 dark:[color-scheme:dark]"
                         />
                       </label>
                       <div className="sm:col-span-2">
@@ -1173,7 +1215,7 @@ export function AdminProductManager({ token }: Props) {
             ) : null}
           </div>
         </section>
-      </div>
+      ) : null}
     </div>
   );
 }
