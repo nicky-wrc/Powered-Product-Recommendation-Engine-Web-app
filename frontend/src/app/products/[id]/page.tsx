@@ -6,8 +6,11 @@ import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
 import { ProductCard } from "@/components/ProductCard";
 import { ProductExploreTrustSection } from "@/components/ProductExploreTrustSection";
+import { ProductHighlightsSection } from "@/components/ProductHighlightsSection";
 import { ProductFaqSection } from "@/components/ProductFaqSection";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
+import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
+import { ProductRecommendationGridSection } from "@/components/ProductRecommendationGridSection";
 import { ProductRecentSection } from "@/components/ProductRecentSection";
 import { ProductReviewsSection } from "@/components/ProductReviewsSection";
 import { ProductServicePoliciesSection } from "@/components/ProductServicePoliciesSection";
@@ -191,6 +194,12 @@ export default async function ProductDetailPage({ params }: Props) {
 
         <ProductReviewsSection productId={p.id} initialSummary={review_summary} initialEligibility={review_eligibility} />
 
+        <ProductHighlightsSection
+          product={p}
+          reviewCount={review_summary.count}
+          reviewAverage={review_summary.average}
+        />
+
         <ProductServicePoliciesSection product={p} />
 
         <ProductSustainabilitySection product={p} />
@@ -202,30 +211,30 @@ export default async function ProductDetailPage({ params }: Props) {
         <ProductExploreTrustSection category={p.category} />
 
         {bought_together.length > 0 ? (
-          <section className="space-y-5">
-            <div>
-              <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">Frequently bought together</h2>
-              <p className="text-sm text-stone-600 dark:text-stone-400">From real orders in this demo store.</p>
-            </div>
+          <ProductRecommendationGridSection
+            title="มักซื้อคู่กัน"
+            description="สินค้าที่ลูกค้ามักสั่งร่วมกับรายการนี้ — จากออเดอร์จริงในร้านเดโม"
+          >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {bought_together.map((bp) => (
                 <ProductCard key={bp.id} p={bp} />
               ))}
             </div>
-          </section>
+          </ProductRecommendationGridSection>
         ) : null}
 
-        <section className="space-y-5">
-          <div>
-            <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">Similar products</h2>
-            <p className="text-sm text-stone-600 dark:text-stone-400">Same category & catalog neighbors.</p>
-          </div>
+        <ProductRecommendationGridSection
+          title="สินค้าที่คล้ายกัน"
+          description="สินค้าในหมวดเดียวกันและเพื่อนบ้านในแคตตาล็อก — ช่วยเสริมการตัดสินใจ"
+        >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {similar_products.map((sp) => (
               <ProductCard key={sp.id} p={sp} />
             ))}
           </div>
-        </section>
+        </ProductRecommendationGridSection>
+
+        <ProductPageClosingSection category={p.category} />
       </main>
     </div>
   );

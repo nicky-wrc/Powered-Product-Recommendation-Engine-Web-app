@@ -238,7 +238,10 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
   }, [loading, formSeeded, mine]);
 
   return (
-    <section className="space-y-6 rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+    <section
+      id="product-reviews"
+      className="space-y-6 rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90"
+    >
       <div>
         <h2 className="text-xl font-bold text-stone-900 dark:text-stone-50">รีวิวจากลูกค้า</h2>
         <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-stone-600 dark:text-stone-400">
