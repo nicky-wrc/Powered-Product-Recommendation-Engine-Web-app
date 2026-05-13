@@ -60,6 +60,10 @@ export type Product = {
   has_variants?: boolean;
   variants?: ProductVariant[];
   is_gift_card?: boolean;
+  /** Stable catalog code (ASIN-style); unique when set. */
+  product_code?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
 };
 
 /** True for images stored under our static mount (use with next/image unoptimized in dev/proxy setups). */
@@ -465,6 +469,7 @@ export type ProductReview = {
   author_name: string;
   created_at: string;
   is_mine: boolean;
+  verified_purchase?: boolean;
 };
 
 export type ProductReviewListResponse = {
@@ -485,6 +490,37 @@ export async function fetchProduct(
   review_eligibility: ProductReviewEligibility;
 } | null> {
   const r = await fetch(`${API_BASE}/api/products/${id}`, { next: { revalidate: 15 } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("Failed to load product");
+  const data = (await r.json()) as {
+    product: Product;
+    similar_products: Product[];
+    bought_together?: Product[];
+    review_summary?: ReviewSummary;
+    review_eligibility?: ProductReviewEligibility;
+  };
+  return {
+    product: data.product,
+    similar_products: data.similar_products,
+    bought_together: data.bought_together ?? [],
+    review_summary: data.review_summary ?? { average: null, count: 0 },
+    review_eligibility: data.review_eligibility ?? { can_submit_review: false, reason: null },
+  };
+}
+
+/** PDP bundle by stable store code (e.g. REC-… or custom SKU). */
+export async function fetchProductByStoreCode(
+  code: string,
+): Promise<{
+  product: Product;
+  similar_products: Product[];
+  bought_together: Product[];
+  review_summary: ReviewSummary;
+  review_eligibility: ProductReviewEligibility;
+} | null> {
+  const enc = encodeURIComponent(code.trim());
+  if (!enc) return null;
+  const r = await fetch(`${API_BASE}/api/products/by-code/${enc}`, { next: { revalidate: 15 } });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error("Failed to load product");
   const data = (await r.json()) as {
@@ -699,6 +735,9 @@ export type AdminProductCreate = {
   stock?: number;
   sale_price?: number | null;
   sale_ends_at?: string | null;
+  product_code?: string | null;
+  meta_title?: string | null;
+  meta_description?: string | null;
   /** Optional — create product with SKU rows in one request */
   variants?: AdminProductVariantUpsert[];
 };

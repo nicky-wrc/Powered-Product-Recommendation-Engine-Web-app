@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import { useAppModal } from "@/components/AppModalProvider";
@@ -61,13 +61,15 @@ export default function AddressesPage() {
   useEffect(() => {
     const t = getToken();
     if (!t) {
-      queueMicrotask(() => {
+      startTransition(() => {
         setLoading(false);
         router.replace("/login?next=/addresses");
       });
       return;
     }
-    void load().catch(() => queueMicrotask(() => router.replace("/login?next=/addresses")));
+    startTransition(() => {
+      void load().catch(() => router.replace("/login?next=/addresses"));
+    });
   }, [load, router]);
 
   function startCreate() {

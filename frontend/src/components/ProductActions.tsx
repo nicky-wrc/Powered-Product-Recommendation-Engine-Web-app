@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { Product } from "@/lib/api";
 import { getToken, postEvent } from "@/lib/api";
@@ -11,20 +11,21 @@ import { useAppModal } from "@/components/AppModalProvider";
 type Props = { product: Product };
 
 export function ProductActions({ product }: Props) {
-  const variants = product.variants ?? [];
+  const variants = useMemo(() => product.variants ?? [], [product.variants]);
   const hasVariants = !!(product.has_variants && variants.length > 0);
 
   const [selectedId, setSelectedId] = useState<string>(() => variants[0]?.id ?? "");
   const { confirm } = useAppModal();
   const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (variants.length && !variants.some((v) => v.id === selectedId)) {
-      setSelectedId(variants[0].id);
-    }
-  }, [product.id, variants, selectedId]);
+  const effectiveId =
+    variants.length === 0
+      ? ""
+      : variants.some((v) => v.id === selectedId)
+        ? selectedId
+        : (variants[0]?.id ?? "");
 
-  const selected = variants.find((v) => v.id === selectedId) ?? variants[0] ?? null;
+  const selected = variants.find((v) => v.id === effectiveId) ?? null;
 
   async function addToCart() {
     if (hasVariants && !selected) {
@@ -71,7 +72,7 @@ export function ProductActions({ product }: Props) {
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-stone-700 dark:text-stone-300">ตัวเลือกสินค้า</span>
           <select
-            value={selectedId}
+            value={effectiveId}
             onChange={(e) => setSelectedId(e.target.value)}
             className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-900 outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
           >

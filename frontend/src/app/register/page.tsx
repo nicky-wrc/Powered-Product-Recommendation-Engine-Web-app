@@ -4,10 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
 import { flushLocalCartToServer } from "@/lib/cartSync";
 import { API_BASE, formatNetworkError, readApiErrorMessage, setToken } from "@/lib/api";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -16,6 +19,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const field =
     "rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-stone-900 shadow-inner outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-50";
@@ -23,12 +27,21 @@ export default function RegisterPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setErr("กรุณายืนยัน CAPTCHA");
+      return;
+    }
     setLoading(true);
     try {
       const r = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          cf_turnstile_response: turnstileToken || undefined,
+        }),
       });
       if (!r.ok) {
         setErr(await readApiErrorMessage(r));
@@ -83,6 +96,12 @@ export default function RegisterPage() {
                 className={field}
               />
             </label>
+            {TURNSTILE_SITE_KEY ? (
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-stone-600 dark:text-stone-400">ยืนยันความปลอดภัย</span>
+                <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+              </div>
+            ) : null}
             {err ? <p className="text-sm text-red-600 dark:text-red-400">{err}</p> : null}
             <button
               type="submit"

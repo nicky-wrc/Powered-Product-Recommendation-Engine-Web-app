@@ -10,6 +10,7 @@ from app.deps import get_current_user
 from app.image_upload import read_image_upload
 from app.models.user import User
 from app.schemas.auth import PasswordChange, ProfileUpdate, TokenResponse, UserCreate, UserLogin, UserPublic
+from app.services.turnstile import assert_turnstile_solved
 from app.upload_paths import PROFILE_IMAGES_DIR, REVIEW_IMAGES_DIR
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,6 +36,7 @@ def _public(u: User) -> UserPublic:
 
 @router.post("/register", response_model=TokenResponse)
 def register(body: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
+    assert_turnstile_solved(body.cf_turnstile_response)
     email = body.email.lower().strip()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already registered")
@@ -52,6 +54,7 @@ def register(body: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
+    assert_turnstile_solved(body.cf_turnstile_response)
     email = body.email.lower().strip()
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(body.password, user.hashed_password):

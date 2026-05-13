@@ -29,6 +29,7 @@ class ProductReviewPublic(BaseModel):
     author_name: str
     created_at: datetime
     is_mine: bool = False
+    verified_purchase: bool = False
 
 
 class ProductReviewListResponse(BaseModel):

@@ -4,10 +4,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
+import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
 import { flushLocalCartToServer } from "@/lib/cartSync";
 import { API_BASE, formatNetworkError, readApiErrorMessage, setToken } from "@/lib/api";
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
 function LoginForm() {
   const router = useRouter();
@@ -16,16 +19,25 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    if (TURNSTILE_SITE_KEY && !turnstileToken) {
+      setErr("กรุณายืนยัน CAPTCHA");
+      return;
+    }
     setLoading(true);
     try {
       const r = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email,
+          password,
+          cf_turnstile_response: turnstileToken || undefined,
+        }),
       });
       if (!r.ok) {
         setErr(await readApiErrorMessage(r).catch(() => "Invalid email or password"));
@@ -78,6 +90,12 @@ function LoginForm() {
               className={field}
             />
           </label>
+          {TURNSTILE_SITE_KEY ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-stone-600 dark:text-stone-400">ยืนยันความปลอดภัย</span>
+              <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+            </div>
+          ) : null}
           {err ? <p className="text-sm text-red-600 dark:text-red-400">{err}</p> : null}
           <button
             type="submit"

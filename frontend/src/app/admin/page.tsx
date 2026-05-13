@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 
 import { AdminDashboardCharts } from "@/components/admin/AdminDashboardCharts";
 import type { AdminAnalytics, Readiness } from "@/lib/api";
@@ -16,7 +16,7 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const auth = getToken();
     if (!auth) {
-      setLoading(false);
+      startTransition(() => setLoading(false));
       return;
     }
     fetchAdminAnalytics(auth)

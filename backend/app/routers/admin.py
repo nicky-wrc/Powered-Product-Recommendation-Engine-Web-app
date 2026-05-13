@@ -150,11 +150,18 @@ def create_product(
         stock=body.stock,
         sale_price=Decimal(str(body.sale_price)) if body.sale_price is not None else None,
         sale_ends_at=body.sale_ends_at,
+        product_code=body.product_code,
+        meta_title=body.meta_title,
+        meta_description=body.meta_description,
     )
     _validate_product_flash(p)
     db.add(p)
     db.commit()
     db.refresh(p)
+    if not p.product_code:
+        p.product_code = f"REC-{str(p.id).replace('-', '')}"
+        db.commit()
+        db.refresh(p)
     if p.image_url:
         db.add(ProductImage(product_id=p.id, image_url=p.image_url, sort_order=0))
         db.commit()
@@ -233,6 +240,12 @@ def update_product(
             p.video_url = None
         else:
             p.video_url = str(u).strip() or None
+    if "product_code" in data:
+        p.product_code = data["product_code"]
+    if "meta_title" in data:
+        p.meta_title = data["meta_title"]
+    if "meta_description" in data:
+        p.meta_description = data["meta_description"]
     if "sale_price" in data:
         sp = data["sale_price"]
         p.sale_price = Decimal(str(sp)) if sp is not None else None

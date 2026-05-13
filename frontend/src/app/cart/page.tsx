@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import { FreeShippingProgress } from "@/components/FreeShippingProgress";
@@ -112,16 +112,18 @@ export default function CartPage() {
 
   const linesSig = lines.map((l) => `${l.product_id}:${l.variant_id ?? ""}:${l.qty}`).join("|");
   useEffect(() => {
-    setAppliedPromo(null);
-    setPromoHint(null);
-    setAppliedLoyalty(null);
-    setLoyaltyHint(null);
-    setRedeemDraft("");
-    setAppliedGc(null);
-    setGcHint(null);
-    setGcDraft("");
-    setGiftRecipientEmail("");
-    setGiftRecipientMessage("");
+    startTransition(() => {
+      setAppliedPromo(null);
+      setPromoHint(null);
+      setAppliedLoyalty(null);
+      setLoyaltyHint(null);
+      setRedeemDraft("");
+      setAppliedGc(null);
+      setGcHint(null);
+      setGcDraft("");
+      setGiftRecipientEmail("");
+      setGiftRecipientMessage("");
+    });
   }, [linesSig]);
 
   function orderLinePayload() {

@@ -35,6 +35,7 @@ from app.schemas.reviews import (
     ReviewSummary,
 )
 from app.services.bought_together import bought_together_products
+from app.services.product_codes import normalize_product_code
 from app.services.product_qa import product_qa_item_public
 from app.services.product_variants import variant_aggregates_for_product_ids
 
@@ -203,8 +204,56 @@ def _review_summary(db: Session, product_id: UUID) -> ReviewSummary:
     return ReviewSummary(average=avg, count=cnt)
 
 
-def _review_public(row: ProductReview, viewer_id: UUID | None) -> ProductReviewPublic:
+def _product_with_similar(db: Session, p: Product, viewer: User | None) -> ProductWithSimilar:
+    product_id = p.id
+    sim_stmt = select(Product).where(Product.id != p.id)
+    if p.category:
+        sim_stmt = sim_stmt.where(Product.category == p.category)
+    sim_stmt = sim_stmt.order_by(Product.name.asc()).limit(8)
+    similar = list(db.scalars(sim_stmt).all())
+    if len(similar) < 8:
+        have = {x.id for x in similar}
+        have.add(p.id)
+        fill_stmt = (
+            select(Product).where(Product.id.not_in(have)).order_by(Product.name.asc()).limit(8 - len(similar))
+        )
+        similar.extend(db.scalars(fill_stmt).all())
+    bought = bought_together_products(db, product_id, 8)
+    variant_rows = list(
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == product_id)
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
+        ).all(),
+    )
+    gallery_rows = list(
+        db.scalars(
+            select(ProductImage)
+            .where(ProductImage.product_id == product_id)
+            .order_by(ProductImage.sort_order.asc(), ProductImage.id.asc()),
+        ).all(),
+    )
+    gallery_urls = [r.image_url for r in gallery_rows] or ([p.image_url] if p.image_url else [])
+    extra_ids = [x.id for x in similar] + [x.id for x in bought]
+    agg_map = variant_aggregates_for_product_ids(db, extra_ids)
+    return ProductWithSimilar(
+        product=product_public(p, gallery_urls=gallery_urls, variants_for_detail=variant_rows or None),
+        similar_products=[
+            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
+            for x in similar
+        ],
+        bought_together=[
+            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
+            for x in bought
+        ],
+        review_summary=_review_summary(db, product_id),
+        review_eligibility=_review_eligibility(db, product_id, viewer),
+    )
+
+
+def _review_public(db: Session, row: ProductReview, viewer_id: UUID | None) -> ProductReviewPublic:
     author = row.user.name.strip() if row.user and row.user.name else "Member"
+    verified = _user_has_purchased_product(db, row.user_id, row.product_id)
     return ProductReviewPublic(
         id=row.id,
         rating=row.rating,
@@ -214,6 +263,7 @@ def _review_public(row: ProductReview, viewer_id: UUID | None) -> ProductReviewP
         author_name=author,
         created_at=row.created_at,
         is_mine=viewer_id is not None and row.user_id == viewer_id,
+        verified_purchase=verified,
     )
 
 
@@ -259,7 +309,7 @@ def list_product_reviews(
     )
     rows = list(db.scalars(stmt).unique().all())
     return ProductReviewListResponse(
-        items=[_review_public(r, viewer_id) for r in rows],
+        items=[_review_public(db, r, viewer_id) for r in rows],
         total=total,
         page=page,
         total_pages=total_pages,
@@ -311,7 +361,7 @@ def upsert_my_product_review(
     )
     assert row is not None
     summ = _review_summary(db, product_id)
-    return ProductReviewCreateResponse(review=_review_public(row, user.id), review_summary=summ)
+    return ProductReviewCreateResponse(review=_review_public(db, row, user.id), review_summary=summ)
 
 
 @router.delete("/{product_id}/reviews/me", response_model=ReviewSummary)
@@ -387,6 +437,21 @@ def post_product_question(
     return ProductQaListResponse(items=[product_qa_item_public(r, user.id) for r in rows])
 
 
+@router.get("/by-code/{product_code}", response_model=ProductWithSimilar)
+def get_product_by_store_code(
+    product_code: str,
+    db: Session = Depends(get_db),
+    viewer: User | None = Depends(get_current_user_optional),
+) -> ProductWithSimilar:
+    code = normalize_product_code(product_code)
+    if not code:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid product code")
+    p = db.scalar(select(Product).where(Product.product_code == code))
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    return _product_with_similar(db, p, viewer)
+
+
 @router.get("/{product_id}", response_model=ProductWithSimilar)
 def get_product(
     product_id: UUID,
@@ -396,56 +461,4 @@ def get_product(
     p = db.get(Product, product_id)
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
-
-    sim_stmt = select(Product).where(Product.id != p.id)
-    if p.category:
-        sim_stmt = sim_stmt.where(Product.category == p.category)
-    sim_stmt = sim_stmt.order_by(Product.name.asc()).limit(8)
-    similar = list(db.scalars(sim_stmt).all())
-
-    if len(similar) < 8:
-        have = {x.id for x in similar}
-        have.add(p.id)
-        fill_stmt = (
-            select(Product)
-            .where(Product.id.not_in(have))
-            .order_by(Product.name.asc())
-            .limit(8 - len(similar))
-        )
-        similar.extend(db.scalars(fill_stmt).all())
-
-    bought = bought_together_products(db, product_id, 8)
-
-    variant_rows = list(
-        db.scalars(
-            select(ProductVariant)
-            .where(ProductVariant.product_id == product_id)
-            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
-        ).all(),
-    )
-
-    gallery_rows = list(
-        db.scalars(
-            select(ProductImage)
-            .where(ProductImage.product_id == product_id)
-            .order_by(ProductImage.sort_order.asc(), ProductImage.id.asc()),
-        ).all(),
-    )
-    gallery_urls = [r.image_url for r in gallery_rows] or ([p.image_url] if p.image_url else [])
-
-    extra_ids = [x.id for x in similar] + [x.id for x in bought]
-    agg_map = variant_aggregates_for_product_ids(db, extra_ids)
-
-    return ProductWithSimilar(
-        product=product_public(p, gallery_urls=gallery_urls, variants_for_detail=variant_rows or None),
-        similar_products=[
-            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
-            for x in similar
-        ],
-        bought_together=[
-            product_public(x, variant_aggregate=agg_map.get(x.id) if agg_map.get(x.id, (0, 0, 0))[0] > 0 else None)
-            for x in bought
-        ],
-        review_summary=_review_summary(db, product_id),
-        review_eligibility=_review_eligibility(db, product_id, viewer),
-    )
+    return _product_with_similar(db, p, viewer)

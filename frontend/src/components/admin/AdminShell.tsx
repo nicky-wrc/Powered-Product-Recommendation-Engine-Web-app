@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, startTransition, type ReactNode } from "react";
 
 type NavIconName = "dashboard" | "plus" | "stock";
 
@@ -86,7 +86,7 @@ export function AdminShell({ email, children }: { email: string; children: React
   const { title, crumbs } = breadcrumbFor(pathname);
 
   useEffect(() => {
-    setSidebarOpen(false);
+    startTransition(() => setSidebarOpen(false));
   }, [pathname]);
 
   return (

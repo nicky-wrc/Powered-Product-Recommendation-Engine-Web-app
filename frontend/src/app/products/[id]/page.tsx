@@ -40,8 +40,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!data) return { title: "Product" };
 
   const p = data.product;
+  const titleBase = (p.meta_title?.trim() || p.name).trim();
   const priceStr = `$${p.price.toFixed(2)}`;
-  const rawDesc = p.description?.replace(/\s+/g, " ").trim() ?? "";
+  const rawDesc = (p.meta_description?.trim() || p.description)?.replace(/\s+/g, " ").trim() ?? "";
   const description =
     rawDesc.length > 0
       ? rawDesc.slice(0, 155) + (rawDesc.length > 155 ? "…" : "")
@@ -57,18 +58,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       : undefined;
 
   return {
-    title: p.name,
+    title: titleBase,
     description,
     openGraph: {
-      title: p.name,
+      title: titleBase,
       description,
       type: "website",
-      url: `/products/${p.id}`,
+      url: p.product_code
+        ? `/products/code/${encodeURIComponent(p.product_code)}`
+        : `/products/${p.id}`,
       images,
     },
     twitter: {
       card: "summary_large_image",
-      title: p.name,
+      title: titleBase,
       description,
       images: images?.map((i) => i.url),
     },
@@ -80,13 +83,16 @@ export default async function ProductDetailPage({ params }: Props) {
   const data = await getProductPageData(id);
   if (!data) notFound();
   const { product: p, similar_products, bought_together, review_summary, review_eligibility } = data;
-  const shareUrl = absoluteUrl(`/products/${p.id}`);
+  const shareUrl = absoluteUrl(
+    p.product_code ? `/products/code/${encodeURIComponent(p.product_code)}` : `/products/${p.id}`,
+  );
   const resolvedImages = productGalleryUrls(p).map((u) => absoluteUrl(u));
 
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: p.name,
+    sku: p.product_code ?? undefined,
     description: p.description ?? undefined,
     image: resolvedImages.length > 0 ? resolvedImages : undefined,
     offers: {
@@ -147,6 +153,11 @@ export default async function ProductDetailPage({ params }: Props) {
             <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50 md:text-4xl">
               {p.name}
             </h1>
+            {p.product_code ? (
+              <p className="text-xs font-mono text-stone-500 dark:text-zinc-400">
+                รหัสสินค้า: <span className="text-stone-700 dark:text-stone-300">{p.product_code}</span>
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-baseline gap-4">
               <div className="flex flex-col gap-1">
                 {p.compare_at_price != null && p.compare_at_price > p.price ? (
@@ -223,7 +234,7 @@ export default async function ProductDetailPage({ params }: Props) {
             ) : null}
             <ProductShareRow url={shareUrl} title={p.name} />
             <CompareToggle product={p} className="max-w-md" />
-            <ProductActions product={p} />
+            <ProductActions key={p.id} product={p} />
           </div>
         </div>
 

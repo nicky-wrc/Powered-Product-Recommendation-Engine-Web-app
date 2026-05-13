@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 
 import { useAppModal } from "@/components/AppModalProvider";
 import {
@@ -103,12 +103,14 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
   const [eligibilityLoading, setEligibilityLoading] = useState(true);
 
   useEffect(() => {
-    setEligibility(initialEligibility);
+    startTransition(() => {
+      setEligibility(initialEligibility);
+    });
   }, [initialEligibility]);
 
   useEffect(() => {
     let cancelled = false;
-    setEligibilityLoading(true);
+    startTransition(() => setEligibilityLoading(true));
     void (async () => {
       try {
         const e = await fetchProductReviewEligibility(productId, getToken());
@@ -146,7 +148,9 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
   );
 
   useEffect(() => {
-    void loadPage(1, false);
+    startTransition(() => {
+      void loadPage(1, false);
+    });
   }, [loadPage]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -231,10 +235,12 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
 
   useEffect(() => {
     if (loading || formSeeded || !mine) return;
-    setRating(mine.rating);
-    setTitle(mine.title ?? "");
-    setBody(mine.body ?? "");
-    setFormSeeded(true);
+    startTransition(() => {
+      setRating(mine.rating);
+      setTitle(mine.title ?? "");
+      setBody(mine.body ?? "");
+      setFormSeeded(true);
+    });
   }, [loading, formSeeded, mine]);
 
   return (
@@ -373,8 +379,13 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">{rev.author_name}</p>
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <StarRow value={rev.rating} readOnly />
+                    {rev.verified_purchase ? (
+                      <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-900 dark:bg-teal-950 dark:text-teal-200">
+                        ซื้อจริง
+                      </span>
+                    ) : null}
                     <time className="text-xs text-stone-500 tabular-nums" dateTime={rev.created_at}>
                       {new Date(rev.created_at).toLocaleString()}
                     </time>

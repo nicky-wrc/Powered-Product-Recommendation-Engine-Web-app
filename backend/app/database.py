@@ -158,6 +158,27 @@ def apply_runtime_schema_patches() -> None:
         )
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_card_code VARCHAR(32);"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_card_discount NUMERIC(14,2);"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS product_code VARCHAR(40);"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_title VARCHAR(300);"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_description VARCHAR(500);"))
+        conn.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ix_products_product_code
+                ON products (product_code)
+                WHERE product_code IS NOT NULL AND BTRIM(product_code) <> '';
+                """
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE products
+                SET product_code = 'REC-' || REPLACE(id::text, '-', '')
+                WHERE product_code IS NULL OR BTRIM(product_code) = '';
+                """
+            ),
+        )
 
 
 class Base(DeclarativeBase):

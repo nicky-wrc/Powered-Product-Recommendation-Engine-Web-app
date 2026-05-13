@@ -38,6 +38,9 @@ type FormDraft = {
   image_url: string;
   video_url: string;
   stock: string;
+  product_code: string;
+  meta_title: string;
+  meta_description: string;
 };
 
 function tagsForApi(tags: string[]): string[] | null {
@@ -104,6 +107,9 @@ const emptyDraft: FormDraft = {
   image_url: "",
   video_url: "",
   stock: "",
+  product_code: "",
+  meta_title: "",
+  meta_description: "",
 };
 
 /** Sentinel for inventory chip "ไม่มีหมวด" — not a real API category name */
@@ -264,6 +270,9 @@ export function AdminProductManager({ token, mode }: Props) {
       image_url: prod.image_url ?? "",
       video_url: prod.video_url ?? "",
       stock: String(prod.stock),
+      product_code: prod.product_code ?? "",
+      meta_title: prod.meta_title ?? "",
+      meta_description: prod.meta_description ?? "",
     });
     setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
     setEditVariants(
@@ -291,6 +300,9 @@ export function AdminProductManager({ token, mode }: Props) {
       image_url: p.image_url ?? "",
       video_url: p.video_url ?? "",
       stock: String(p.stock),
+      product_code: p.product_code ?? "",
+      meta_title: p.meta_title ?? "",
+      meta_description: p.meta_description ?? "",
     });
     setEditGallery([]);
     setEditVariants([]);
@@ -349,6 +361,9 @@ export function AdminProductManager({ token, mode }: Props) {
         image_url,
         video_url: createForm.video_url.trim() || null,
         stock,
+        product_code: createForm.product_code.trim() || null,
+        meta_title: createForm.meta_title.trim() || null,
+        meta_description: createForm.meta_description.trim() || null,
         ...(flash === "empty" ? {} : flash),
         ...(variantsPayload.length > 0 ? { variants: variantsPayload } : {}),
       });
@@ -415,6 +430,9 @@ export function AdminProductManager({ token, mode }: Props) {
         tags: tagsForApi(form.tags),
         stock,
         video_url: form.video_url.trim() || null,
+        product_code: form.product_code.trim() || null,
+        meta_title: form.meta_title.trim() || null,
+        meta_description: form.meta_description.trim() || null,
         ...flashPart,
       };
       if (editGallery.length === 0) {
@@ -662,6 +680,36 @@ export function AdminProductManager({ token, mode }: Props) {
                 value={createForm.description}
                 onChange={(e) => setCreateForm((d) => ({ ...d, description: e.target.value }))}
                 className="mt-1.5 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm leading-normal shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              รหัสสินค้า (ASIN/SKU) — ว่างได้ ระบบจะสร้าง REC-… ให้อัตโนมัติ
+              <input
+                value={createForm.product_code}
+                onChange={(e) => setCreateForm((d) => ({ ...d, product_code: e.target.value }))}
+                placeholder="เช่น MY-SKU-001"
+                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 font-mono text-sm uppercase shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              SEO — title (แท็บเบราว์เซอร์ / Open Graph)
+              <input
+                value={createForm.meta_title}
+                onChange={(e) => setCreateForm((d) => ({ ...d, meta_title: e.target.value }))}
+                maxLength={300}
+                placeholder="ว่าง = ใช้ชื่อสินค้า"
+                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              SEO — meta description
+              <textarea
+                rows={2}
+                value={createForm.meta_description}
+                onChange={(e) => setCreateForm((d) => ({ ...d, meta_description: e.target.value }))}
+                maxLength={500}
+                placeholder="สรุปสั้นๆ สำหรับผลการค้นหา — ว่าง = ใช้รายละเอียดสินค้า"
+                className="mt-1.5 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
               />
             </label>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
@@ -1078,6 +1126,33 @@ export function AdminProductManager({ token, mode }: Props) {
                         onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                         className="resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950 sm:col-span-2"
                       />
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        รหัสสินค้า (SKU / ASIN-style)
+                        <input
+                          value={form.product_code}
+                          onChange={(e) => setForm((f) => ({ ...f, product_code: e.target.value }))}
+                          className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 font-mono text-sm uppercase dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        SEO title
+                        <input
+                          value={form.meta_title}
+                          onChange={(e) => setForm((f) => ({ ...f, meta_title: e.target.value }))}
+                          maxLength={300}
+                          className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        SEO meta description
+                        <textarea
+                          rows={2}
+                          value={form.meta_description}
+                          onChange={(e) => setForm((f) => ({ ...f, meta_description: e.target.value }))}
+                          maxLength={500}
+                          className="mt-1 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
                       <input
                         inputMode="decimal"
                         value={form.price}
@@ -1372,6 +1447,17 @@ export function AdminProductManager({ token, mode }: Props) {
                           >
                             {p.name}
                           </Link>
+                          {p.product_code ? (
+                            <p className="mt-0.5 font-mono text-[11px] text-stone-500 dark:text-zinc-500">
+                              รหัส: {p.product_code}
+                              <Link
+                                href={`/products/code/${encodeURIComponent(p.product_code)}`}
+                                className="ml-2 text-teal-600 underline dark:text-teal-400"
+                              >
+                                ลิงก์สั้น
+                              </Link>
+                            </p>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             {p.category ? (
                               <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold text-teal-900 dark:bg-teal-950/80 dark:text-teal-200">

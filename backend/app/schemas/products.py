@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.models.product import Product
 from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
+from app.services.product_codes import normalize_product_code
 from app.services.product_pricing import effective_unit_price, flash_sale_active
 
 
@@ -39,8 +40,17 @@ class ProductPublic(BaseModel):
     has_variants: bool = False
     variants: list[ProductVariantPublic] = Field(default_factory=list)
     is_gift_card: bool = False
+    product_code: str | None = None
+    meta_title: str | None = None
+    meta_description: str | None = None
 
 
+def _product_seo_fields(p: Product) -> dict[str, str | None]:
+    return {
+        "product_code": p.product_code,
+        "meta_title": p.meta_title,
+        "meta_description": p.meta_description,
+    }
 def product_public(
     p: Product,
     *,
@@ -88,6 +98,7 @@ def product_public(
             has_variants=True,
             variants=variant_pub,
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
+            **_product_seo_fields(p),
         )
 
     if variant_aggregate and variant_aggregate[0] > 0:
@@ -111,6 +122,7 @@ def product_public(
             has_variants=True,
             variants=[],
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
+            **_product_seo_fields(p),
         )
 
     active = flash_sale_active(p)
@@ -134,6 +146,7 @@ def product_public(
         has_variants=False,
         variants=[],
         is_gift_card=bool(getattr(p, "is_gift_card", False)),
+        **_product_seo_fields(p),
     )
 
 
@@ -209,6 +222,28 @@ class ProductCreate(BaseModel):
     sale_price: float | None = Field(None, ge=0)
     sale_ends_at: datetime | None = None
     variants: list[ProductVariantUpsert] | None = None
+    product_code: str | None = Field(None, max_length=40)
+    meta_title: str | None = Field(None, max_length=300)
+    meta_description: str | None = Field(None, max_length=500)
+
+    @field_validator("product_code", mode="before")
+    @classmethod
+    def _norm_product_code_create(cls, v: object) -> str | None:
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str):
+            raise ValueError("product_code must be a string")
+        return normalize_product_code(v)
+
+    @field_validator("meta_title", "meta_description", mode="before")
+    @classmethod
+    def _strip_meta_create(cls, v: object) -> object:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        return s or None
 
     @model_validator(mode="after")
     def _validate_flash_create(self) -> ProductCreate:
@@ -251,6 +286,30 @@ class ProductUpdate(BaseModel):
     sale_price: float | None = Field(None, ge=0)
     sale_ends_at: datetime | None = None
     variants: list[ProductVariantUpsert] | None = None
+    product_code: str | None = Field(None, max_length=40)
+    meta_title: str | None = Field(None, max_length=300)
+    meta_description: str | None = Field(None, max_length=500)
+
+    @field_validator("product_code", mode="before")
+    @classmethod
+    def _norm_product_code_update(cls, v: object) -> object:
+        if v is None:
+            return None
+        if v == "":
+            return None
+        if not isinstance(v, str):
+            raise ValueError("product_code must be a string")
+        return normalize_product_code(v)
+
+    @field_validator("meta_title", "meta_description", mode="before")
+    @classmethod
+    def _strip_meta_update(cls, v: object) -> object:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        return s or None
 
     @field_validator("image_url", "video_url", mode="before")
     @classmethod

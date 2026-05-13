@@ -31,6 +31,10 @@ class Product(Base):
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     sale_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_gift_card: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Stable storefront / SEO code (ASIN-style), e.g. REC-<uuidhex>. Unique when set.
+    product_code: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True, index=True)
+    meta_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    meta_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",

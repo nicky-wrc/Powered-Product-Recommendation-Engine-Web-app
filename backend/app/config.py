@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     loyalty_earn_points_per_dollar: Decimal = Decimal("1")
     # Points required for $1.00 off merchandise (e.g. 100 => 100 pts = $1).
     loyalty_redeem_points_per_dollar: int = 100
+    # Optional: Cloudflare Turnstile — when set, login/register require cf_turnstile_response in body.
+    turnstile_secret_key: str | None = None
 
 
 settings = Settings()
