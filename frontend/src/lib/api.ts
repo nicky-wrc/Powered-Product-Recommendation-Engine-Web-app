@@ -59,6 +59,7 @@ export type Product = {
   stock: number;
   has_variants?: boolean;
   variants?: ProductVariant[];
+  is_gift_card?: boolean;
 };
 
 /** True for images stored under our static mount (use with next/image unoptimized in dev/proxy setups). */
@@ -95,6 +96,8 @@ export type User = {
   email: string;
   name: string;
   is_admin: boolean;
+  /** Loyalty balance (redeem in cart; 100 pts = $1 off by default). */
+  loyalty_points?: number;
   avatar_url?: string | null;
   phone?: string | null;
   address_line1?: string | null;
@@ -920,6 +923,11 @@ export type OrderPublic = {
   gift_message: string | null;
   promo_code?: string | null;
   promo_discount?: number | null;
+  loyalty_points_redeemed?: number | null;
+  loyalty_discount?: number | null;
+  loyalty_points_earned?: number | null;
+  gift_card_code?: string | null;
+  gift_card_discount?: number | null;
   created_at: string;
   items: {
     product_id: string;
@@ -936,6 +944,10 @@ export type OrderCheckoutOptions = {
   gift_wrap?: boolean;
   gift_message?: string | null;
   promo_code?: string | null;
+  redeem_loyalty_points?: number | null;
+  gift_card_code?: string | null;
+  gift_cards_recipient_email?: string | null;
+  gift_cards_message?: string | null;
 };
 
 export type PromoPreviewResponse = {
@@ -966,12 +978,120 @@ export async function previewPromoCode(
   return r.json();
 }
 
+export type LoyaltyPreviewResponse = {
+  valid: boolean;
+  error?: string | null;
+  subtotal: number;
+  promo_discount: number;
+  merch_after_promo: number;
+  balance: number;
+  redeem_points_used: number;
+  loyalty_discount: number;
+  merch_after_loyalty: number;
+  points_earned_if_completed: number;
+  gift_wrap_fee: number;
+  redeem_points_per_dollar: number;
+  earn_points_per_dollar: number;
+};
+
+export async function previewLoyalty(
+  token: string,
+  body: {
+    items: { product_id: string; quantity: number; variant_id?: string | null }[];
+    promo_code?: string | null;
+    redeem_loyalty_points?: number;
+  },
+): Promise<LoyaltyPreviewResponse> {
+  const r = await fetch(`${API_BASE}/api/loyalty/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      items: body.items,
+      promo_code: body.promo_code?.trim() ? body.promo_code.trim().toUpperCase() : null,
+      redeem_loyalty_points: body.redeem_loyalty_points ?? 0,
+    }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export type GiftCardPreviewResponse = {
+  valid: boolean;
+  error?: string | null;
+  subtotal: number;
+  promo_discount: number;
+  merch_after_promo: number;
+  loyalty_discount: number;
+  merch_after_loyalty: number;
+  gift_card_discount: number;
+  merch_after_gift_card: number;
+  gift_wrap_fee: number;
+  gift_card_balance?: number | null;
+};
+
+export async function previewGiftCard(
+  token: string,
+  body: {
+    items: { product_id: string; quantity: number; variant_id?: string | null }[];
+    promo_code?: string | null;
+    redeem_loyalty_points?: number;
+    gift_card_code?: string | null;
+  },
+): Promise<GiftCardPreviewResponse> {
+  const r = await fetch(`${API_BASE}/api/gift-cards/preview`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      items: body.items,
+      promo_code: body.promo_code?.trim() ? body.promo_code.trim().toUpperCase() : null,
+      redeem_loyalty_points: body.redeem_loyalty_points ?? 0,
+      gift_card_code: body.gift_card_code?.trim() ? body.gift_card_code.trim() : null,
+    }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export type GiftCardMine = {
+  id: string;
+  code: string;
+  balance_remaining: number;
+  face_value: number;
+  recipient_email?: string | null;
+  created_at: string;
+  issuer_order_id: string;
+};
+
+export async function fetchMyGiftCards(token: string): Promise<GiftCardMine[]> {
+  const r = await fetch(`${API_BASE}/api/gift-cards/mine`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
 export async function postOrder(
   token: string,
   items: { product_id: string; quantity: number; variant_id?: string | null }[],
   options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
-  const { payment_method = "direct", gift_wrap = false, gift_message = null, promo_code = null } = options;
+  const {
+    payment_method = "direct",
+    gift_wrap = false,
+    gift_message = null,
+    promo_code = null,
+    redeem_loyalty_points = null,
+    gift_card_code = null,
+    gift_cards_recipient_email = null,
+    gift_cards_message = null,
+  } = options;
   const r = await fetch(`${API_BASE}/api/orders`, {
     method: "POST",
     headers: {
@@ -984,6 +1104,10 @@ export async function postOrder(
       gift_wrap,
       gift_message: gift_message?.trim() ? gift_message.trim() : null,
       promo_code: promo_code?.trim() ? promo_code.trim().toUpperCase() : null,
+      redeem_loyalty_points: redeem_loyalty_points != null && redeem_loyalty_points > 0 ? redeem_loyalty_points : null,
+      gift_card_code: gift_card_code?.trim() ? gift_card_code.trim() : null,
+      gift_cards_recipient_email: gift_cards_recipient_email?.trim() ? gift_cards_recipient_email.trim() : null,
+      gift_cards_message: gift_cards_message?.trim() ? gift_cards_message.trim() : null,
     }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));
@@ -1001,9 +1125,26 @@ export async function fetchPaymentStatus(): Promise<PaymentStatus> {
 export async function createStripeCheckoutSession(
   token: string,
   items: { product_id: string; quantity: number; variant_id?: string | null }[],
-  options: Pick<OrderCheckoutOptions, "gift_wrap" | "gift_message" | "promo_code"> = {},
+  options: Pick<
+    OrderCheckoutOptions,
+    | "gift_wrap"
+    | "gift_message"
+    | "promo_code"
+    | "redeem_loyalty_points"
+    | "gift_card_code"
+    | "gift_cards_recipient_email"
+    | "gift_cards_message"
+  > = {},
 ): Promise<{ url: string }> {
-  const { gift_wrap = false, gift_message = null, promo_code = null } = options;
+  const {
+    gift_wrap = false,
+    gift_message = null,
+    promo_code = null,
+    redeem_loyalty_points = null,
+    gift_card_code = null,
+    gift_cards_recipient_email = null,
+    gift_cards_message = null,
+  } = options;
   const r = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
     method: "POST",
     headers: {
@@ -1015,6 +1156,10 @@ export async function createStripeCheckoutSession(
       gift_wrap,
       gift_message: gift_message?.trim() ? gift_message.trim() : null,
       promo_code: promo_code?.trim() ? promo_code.trim().toUpperCase() : null,
+      redeem_loyalty_points: redeem_loyalty_points != null && redeem_loyalty_points > 0 ? redeem_loyalty_points : null,
+      gift_card_code: gift_card_code?.trim() ? gift_card_code.trim() : null,
+      gift_cards_recipient_email: gift_cards_recipient_email?.trim() ? gift_cards_recipient_email.trim() : null,
+      gift_cards_message: gift_cards_message?.trim() ? gift_cards_message.trim() : null,
     }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));

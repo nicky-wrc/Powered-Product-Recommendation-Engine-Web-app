@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ReorderOrderButton } from "@/components/ReorderOrderButton";
 import { SiteHeader } from "@/components/SiteHeader";
-import { fetchMyOrders, getToken, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
+import { fetchMyOrders, getToken, notifyProfileUpdated, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
 
 const DEFAULT_QUERY: OrderHistoryFilters = { limit: 100 };
@@ -85,6 +85,7 @@ export default function OrdersPage() {
         try {
           await syncStripeCheckoutSession(t, sessionId);
           window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+          notifyProfileUpdated();
           window.history.replaceState({}, "", "/orders");
         } catch (e) {
           queueMicrotask(() =>
@@ -286,6 +287,23 @@ export default function OrdersPage() {
                     Promo <span className="font-mono font-semibold">{o.promo_code}</span>
                     {" — "}
                     −${Number(o.promo_discount).toFixed(2)}
+                  </p>
+                ) : null}
+                {(o.loyalty_points_redeemed ?? 0) > 0 && (o.loyalty_discount ?? 0) > 0 ? (
+                  <p className="mt-1 text-sm text-amber-900 dark:text-amber-200">
+                    Loyalty −{o.loyalty_points_redeemed} pts · −${Number(o.loyalty_discount).toFixed(2)}
+                  </p>
+                ) : null}
+                {o.gift_card_code && (o.gift_card_discount ?? 0) > 0 ? (
+                  <p className="mt-1 text-sm text-violet-900 dark:text-violet-200">
+                    Gift card <span className="font-mono font-semibold">{o.gift_card_code}</span>
+                    {" — "}
+                    −${Number(o.gift_card_discount).toFixed(2)}
+                  </p>
+                ) : null}
+                {(o.loyalty_points_earned ?? 0) > 0 ? (
+                  <p className="mt-0.5 text-xs text-stone-600 dark:text-stone-400">
+                    +{o.loyalty_points_earned} loyalty points earned on this order
                   </p>
                 ) : null}
                 {o.gift_wrap ? (

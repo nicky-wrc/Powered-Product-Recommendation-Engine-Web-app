@@ -18,6 +18,10 @@ class OrderCreate(BaseModel):
     gift_wrap: bool = False
     gift_message: str | None = Field(default=None, max_length=500)
     promo_code: str | None = Field(default=None, max_length=64)
+    redeem_loyalty_points: int | None = Field(default=None, ge=0, le=500_000)
+    gift_card_code: str | None = Field(default=None, max_length=40)
+    gift_cards_recipient_email: str | None = Field(default=None, max_length=255)
+    gift_cards_message: str | None = Field(default=None, max_length=2000)
 
 
 class OrderItemPublic(BaseModel):
@@ -43,12 +47,19 @@ class OrderPublic(BaseModel):
     gift_message: str | None
     promo_code: str | None = None
     promo_discount: float | None = None
+    loyalty_points_redeemed: int | None = None
+    loyalty_discount: float | None = None
+    loyalty_points_earned: int | None = None
+    gift_card_code: str | None = None
+    gift_card_discount: float | None = None
     created_at: datetime
     items: list[OrderItemPublic]
 
 
 def order_public(o: Order) -> OrderPublic:
     pd = getattr(o, "promo_discount", None)
+    ld = getattr(o, "loyalty_discount", None)
+    gcd = getattr(o, "gift_card_discount", None)
     return OrderPublic(
         id=o.id,
         user_id=o.user_id,
@@ -59,6 +70,11 @@ def order_public(o: Order) -> OrderPublic:
         gift_message=getattr(o, "gift_message", None),
         promo_code=getattr(o, "promo_code", None),
         promo_discount=float(pd) if pd is not None else None,
+        loyalty_points_redeemed=getattr(o, "loyalty_points_redeemed", None),
+        loyalty_discount=float(ld) if ld is not None else None,
+        loyalty_points_earned=getattr(o, "loyalty_points_earned", None),
+        gift_card_code=getattr(o, "gift_card_code", None),
+        gift_card_discount=float(gcd) if gcd is not None else None,
         created_at=o.created_at,
         items=[
             OrderItemPublic(

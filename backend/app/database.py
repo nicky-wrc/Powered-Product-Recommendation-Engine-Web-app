@@ -43,6 +43,7 @@ def apply_runtime_schema_patches() -> None:
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS video_url VARCHAR(2048);",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price NUMERIC(12,2);",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_ends_at TIMESTAMPTZ;",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS is_gift_card BOOLEAN NOT NULL DEFAULT false;",
         ):
             conn.execute(text(stmt))
 
@@ -131,6 +132,32 @@ def apply_runtime_schema_patches() -> None:
         )
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_code VARCHAR(64);"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_discount NUMERIC(14,2);"))
+        conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_points INTEGER NOT NULL DEFAULT 0;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_points_redeemed INTEGER;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_discount NUMERIC(14,2);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_points_earned INTEGER;"))
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS gift_cards (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    code VARCHAR(32) NOT NULL UNIQUE,
+                    face_value NUMERIC(12, 2) NOT NULL,
+                    balance_remaining NUMERIC(12, 2) NOT NULL,
+                    issuer_order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+                    purchased_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    recipient_email VARCHAR(255) NULL,
+                    personal_message TEXT NULL,
+                    active BOOLEAN NOT NULL DEFAULT true,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS ix_gift_cards_issuer_order_id ON gift_cards (issuer_order_id);
+                CREATE INDEX IF NOT EXISTS ix_gift_cards_purchased_by_user_id ON gift_cards (purchased_by_user_id);
+                """
+            ),
+        )
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_card_code VARCHAR(32);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS gift_card_discount NUMERIC(14,2);"))
 
 
 class Base(DeclarativeBase):

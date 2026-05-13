@@ -139,6 +139,11 @@ export default async function ProductDetailPage({ params }: Props) {
               </p>
             ) : null}
             <SustainabilityBadge product={p} />
+            {p.is_gift_card ? (
+              <p className="inline-flex w-fit items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-200">
+                Digital gift card — code delivered after purchase
+              </p>
+            ) : null}
             <h1 className="text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50 md:text-4xl">
               {p.name}
             </h1>

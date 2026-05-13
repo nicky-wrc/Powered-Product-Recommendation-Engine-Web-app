@@ -22,6 +22,11 @@ class Order(Base):
     gift_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     promo_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     promo_discount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    loyalty_points_redeemed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    loyalty_discount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    loyalty_points_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gift_card_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    gift_card_discount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

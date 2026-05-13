@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,6 +30,7 @@ class Product(Base):
     # Flash deal: when active (sale_ends_at in future, sale_price < price), storefront uses sale_price.
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     sale_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_gift_card: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",

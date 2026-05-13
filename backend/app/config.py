@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +26,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str | None = None
     # Storefront origin for Stripe success/cancel URLs (must match where users open the Next.js app).
     public_app_url: str = "http://localhost:3000"
+    # Loyalty program: points earned per $1 of qualifying merchandise (after promo and point redemption, before gift wrap).
+    loyalty_earn_points_per_dollar: Decimal = Decimal("1")
+    # Points required for $1.00 off merchandise (e.g. 100 => 100 pts = $1).
+    loyalty_redeem_points_per_dollar: int = 100
 
 
 settings = Settings()

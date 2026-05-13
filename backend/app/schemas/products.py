@@ -38,6 +38,7 @@ class ProductPublic(BaseModel):
     video_url: str | None = None
     has_variants: bool = False
     variants: list[ProductVariantPublic] = Field(default_factory=list)
+    is_gift_card: bool = False
 
 
 def product_public(
@@ -86,6 +87,7 @@ def product_public(
             video_url=p.video_url,
             has_variants=True,
             variants=variant_pub,
+            is_gift_card=bool(getattr(p, "is_gift_card", False)),
         )
 
     if variant_aggregate and variant_aggregate[0] > 0:
@@ -108,6 +110,7 @@ def product_public(
             video_url=p.video_url,
             has_variants=True,
             variants=[],
+            is_gift_card=bool(getattr(p, "is_gift_card", False)),
         )
 
     active = flash_sale_active(p)
@@ -130,6 +133,7 @@ def product_public(
         video_url=p.video_url,
         has_variants=False,
         variants=[],
+        is_gift_card=bool(getattr(p, "is_gift_card", False)),
     )
 
 

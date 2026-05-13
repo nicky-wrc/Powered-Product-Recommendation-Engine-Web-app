@@ -71,6 +71,11 @@ export function ProductCard({ p, priority = false }: Props) {
               {p.category}
             </span>
           ) : null}
+          {p.is_gift_card ? (
+            <span className="absolute bottom-2 left-2 rounded-md bg-violet-600/95 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+              Gift card
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-1 flex-col gap-1 p-4">
           <SustainabilityBadge product={p} className="mb-0.5" />

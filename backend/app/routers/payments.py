@@ -21,6 +21,8 @@ from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
 from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout, load_checkout_pricing
 from app.services.product_pricing import effective_unit_price
+from app.services import gift_cards as gift_svc
+from app.services import loyalty as loyalty_svc
 from app.services.promo_codes import normalize_promo_code, preview_promo_discount
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -57,6 +59,9 @@ def _stripe_promo_from_metadata(meta: dict) -> tuple[str | None, Decimal | None]
     if cents <= 0:
         return code, None
     return code, (Decimal(cents) / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _gift_opts_from_metadata(meta: dict) -> tuple[bool, str | None]:
     wrap = str(meta.get("gift_wrap") or "0") == "1"
     raw = meta.get("gift_message")
     if wrap and isinstance(raw, str) and raw.strip():
@@ -64,11 +69,51 @@ def _stripe_promo_from_metadata(meta: dict) -> tuple[str | None, Decimal | None]
     return wrap, None
 
 
+def _stripe_loyalty_from_metadata(meta: dict) -> tuple[Decimal | None, int | None]:
+    if "loyalty_discount_cents" not in meta and "loyalty_points_redeemed" not in meta:
+        return None, None
+    try:
+        cents = int(str(meta.get("loyalty_discount_cents") or "0").strip())
+        pts = int(str(meta.get("loyalty_points_redeemed") or "0").strip())
+    except ValueError:
+        return None, None
+    if cents <= 0 and pts <= 0:
+        return None, None
+    return (Decimal(cents) / Decimal("100")).quantize(Decimal("0.01")), pts
+
+
+def _stripe_gift_from_metadata(meta: dict) -> tuple[Decimal | None, str | None]:
+    if "gift_card_discount_cents" not in meta and "gift_card_code" not in meta:
+        return None, None
+    try:
+        cents = int(str(meta.get("gift_card_discount_cents") or "0").strip())
+    except ValueError:
+        cents = 0
+    raw = meta.get("gift_card_code")
+    code = str(raw).strip() if isinstance(raw, str) and str(raw).strip() else None
+    disc: Decimal | None = (Decimal(cents) / Decimal("100")).quantize(Decimal("0.01")) if cents > 0 else None
+    if disc is None and not code:
+        return None, None
+    return disc, code
+
+
+def _gift_card_recipient_from_metadata(meta: dict) -> tuple[str | None, str | None]:
+    em = meta.get("gift_cards_recipient_email")
+    msg = meta.get("gift_cards_message")
+    e_out = em.strip()[:255] if isinstance(em, str) and em.strip() else None
+    m_out = msg.strip()[:2000] if isinstance(msg, str) and msg.strip() else None
+    return e_out, m_out
+
+
 class CheckoutSessionBody(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
     gift_wrap: bool = False
     gift_message: str | None = Field(default=None, max_length=500)
     promo_code: str | None = Field(default=None, max_length=64)
+    redeem_loyalty_points: int | None = Field(default=None, ge=0, le=500_000)
+    gift_card_code: str | None = Field(default=None, max_length=40)
+    gift_cards_recipient_email: str | None = Field(default=None, max_length=255)
+    gift_cards_message: str | None = Field(default=None, max_length=2000)
 
 
 def _stripe_enabled() -> bool:
@@ -111,22 +156,65 @@ def create_checkout_session(
         discount = d
         promo_norm = normalize_promo_code(body.promo_code)
 
-    line_items: list[dict] = []
-    merch_after = pricing.subtotal - discount
-    if merch_after < 0:
-        merch_after = Decimal("0")
+    merch_after_promo = pricing.subtotal - discount
+    if merch_after_promo < 0:
+        merch_after_promo = Decimal("0")
 
-    if discount > 0:
+    redeem_req = int(body.redeem_loyalty_points or 0)
+    loyalty_discount = Decimal("0")
+    loyalty_pts = 0
+    if redeem_req > 0:
+        bal = int(user.loyalty_points or 0)
+        loyalty_pts, loyalty_discount, err = loyalty_svc.compute_redeem(
+            redeem_req,
+            bal,
+            merch_after_promo,
+            loyalty_svc.redeem_points_per_dollar(),
+        )
+        if err:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, err)
+
+    merch_after_loyalty = merch_after_promo - loyalty_discount
+    if merch_after_loyalty < 0:
+        merch_after_loyalty = Decimal("0")
+
+    gc_discount = Decimal("0")
+    gc_stored_code = ""
+    if body.gift_card_code and body.gift_card_code.strip():
+        row = gift_svc.get_card_by_code(db, body.gift_card_code, for_update=False)
+        if row is None or not row.active or row.balance_remaining <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid gift card")
+        gc_discount = gift_svc.preview_redemption_amount(row, merch_after_loyalty)
+        gc_stored_code = row.code
+
+    merch_pay = merch_after_loyalty - gc_discount
+    if merch_pay < 0:
+        merch_pay = Decimal("0")
+
+    if merch_pay <= 0 and not body.gift_wrap:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Order total is $0; use Place order (direct checkout) instead of Stripe.",
+        )
+
+    line_items: list[dict] = []
+    if discount > 0 or loyalty_discount > 0 or gc_discount > 0:
+        label_parts: list[str] = []
+        if discount > 0:
+            label_parts.append("promo")
+        if loyalty_discount > 0:
+            label_parts.append("loyalty")
+        if gc_discount > 0:
+            label_parts.append("gift card")
+        suffix = " + ".join(label_parts) if label_parts else "adjustments"
         line_items.append(
             {
                 "quantity": 1,
                 "price_data": {
                     "currency": "usd",
-                    "unit_amount": _to_cents(merch_after),
+                    "unit_amount": _to_cents(merch_pay),
                     "product_data": {
-                        "name": (
-                            f"Cart — {len(pricing.merged)} line(s), promo discount"
-                        )[:120],
+                        "name": (f"Cart — {len(pricing.merged)} line(s), {suffix}")[:120],
                     },
                 },
             },
@@ -179,11 +267,19 @@ def create_checkout_session(
         "items": compact_items,
         "gift_wrap": "1" if body.gift_wrap else "0",
         "promo_discount_cents": str(_to_cents(discount)),
+        "loyalty_discount_cents": str(_to_cents(loyalty_discount)),
+        "loyalty_points_redeemed": str(loyalty_pts),
+        "gift_card_discount_cents": str(_to_cents(gc_discount)),
+        "gift_card_code": gc_stored_code,
     }
     if promo_norm:
         meta["promo_code"] = promo_norm[:60]
     if body.gift_wrap and body.gift_message and body.gift_message.strip():
         meta["gift_message"] = body.gift_message.strip()[:450]
+    if body.gift_cards_recipient_email and body.gift_cards_recipient_email.strip():
+        meta["gift_cards_recipient_email"] = body.gift_cards_recipient_email.strip()[:255]
+    if body.gift_cards_message and body.gift_cards_message.strip():
+        meta["gift_cards_message"] = body.gift_cards_message.strip()[:450]
 
     base = settings.public_app_url.rstrip("/")
     stripe.api_key = settings.stripe_secret_key
@@ -241,6 +337,9 @@ def sync_checkout_session(
 
     gift_wrap, gift_message = _gift_opts_from_metadata(meta)
     promo_c, promo_disc = _stripe_promo_from_metadata(meta)
+    lo_disc, lo_pts = _stripe_loyalty_from_metadata(meta)
+    gc_disc, gc_code = _stripe_gift_from_metadata(meta)
+    recv_em, recv_msg = _gift_card_recipient_from_metadata(meta)
 
     try:
         order = fulfill_checkout(
@@ -253,6 +352,12 @@ def sync_checkout_session(
             gift_message=gift_message,
             promo_code=promo_c,
             stripe_promo_discount=promo_disc,
+            stripe_loyalty_discount=lo_disc,
+            stripe_loyalty_points_redeemed=lo_pts,
+            gift_cards_recipient_email=recv_em,
+            gift_cards_message=recv_msg,
+            stripe_gift_card_discount=gc_disc,
+            stripe_gift_card_code=gc_code,
         )
         db.commit()
     except CheckoutError as e:
@@ -291,6 +396,9 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
         lines = _parse_meta_items(raw_items)
         gift_wrap, gift_message = _gift_opts_from_metadata(meta)
         promo_c, promo_disc = _stripe_promo_from_metadata(meta)
+        lo_disc, lo_pts = _stripe_loyalty_from_metadata(meta)
+        gc_disc, gc_code = _stripe_gift_from_metadata(meta)
+        recv_em, recv_msg = _gift_card_recipient_from_metadata(meta)
         fulfill_checkout(
             db,
             user_id,
@@ -301,6 +409,12 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
             gift_message=gift_message,
             promo_code=promo_c,
             stripe_promo_discount=promo_disc,
+            stripe_loyalty_discount=lo_disc,
+            stripe_loyalty_points_redeemed=lo_pts,
+            gift_cards_recipient_email=recv_em,
+            gift_cards_message=recv_msg,
+            stripe_gift_card_discount=gc_disc,
+            stripe_gift_card_code=gc_code,
         )
         db.commit()
     except (CheckoutError, IntegrityError, json.JSONDecodeError, ValueError, TypeError):

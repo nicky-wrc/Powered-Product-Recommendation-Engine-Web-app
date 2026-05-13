@@ -37,6 +37,10 @@ def create_order(
             gift_wrap=body.gift_wrap,
             gift_message=body.gift_message,
             promo_code=body.promo_code,
+            redeem_loyalty_points=body.redeem_loyalty_points,
+            gift_card_code=body.gift_card_code,
+            gift_cards_recipient_email=body.gift_cards_recipient_email,
+            gift_cards_message=body.gift_cards_message,
         )
         db.commit()
     except CheckoutError as e:

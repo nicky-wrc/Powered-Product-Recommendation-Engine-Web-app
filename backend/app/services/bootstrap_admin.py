@@ -27,6 +27,7 @@ def ensure_bootstrap_admin(db: Session) -> None:
                 name=name,
                 hashed_password=hash_password(password),
                 is_admin=True,
+                loyalty_points=250,
             ),
         )
     else:

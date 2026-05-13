@@ -21,6 +21,7 @@ def _public(u: User) -> UserPublic:
         email=u.email,
         name=u.name,
         is_admin=u.is_admin,
+        loyalty_points=int(u.loyalty_points or 0),
         avatar_url=u.avatar_url,
         phone=u.phone,
         address_line1=u.address_line1,

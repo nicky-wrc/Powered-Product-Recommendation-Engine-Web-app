@@ -19,7 +19,10 @@ import {
   patchCartItem,
   postCartItem,
   postOrder,
+  previewGiftCard,
+  previewLoyalty,
   previewPromoCode,
+  notifyProfileUpdated,
   isLocalUploadImageUrl,
   productImageUrl,
 } from "@/lib/api";
@@ -55,6 +58,14 @@ export default function CartPage() {
   const [promoDraft, setPromoDraft] = useState("");
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; discount: number } | null>(null);
   const [promoHint, setPromoHint] = useState<string | null>(null);
+  const [redeemDraft, setRedeemDraft] = useState("");
+  const [appliedLoyalty, setAppliedLoyalty] = useState<{ points: number; discount: number } | null>(null);
+  const [loyaltyHint, setLoyaltyHint] = useState<string | null>(null);
+  const [gcDraft, setGcDraft] = useState("");
+  const [appliedGc, setAppliedGc] = useState<{ code: string; discount: number } | null>(null);
+  const [gcHint, setGcHint] = useState<string | null>(null);
+  const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
+  const [giftRecipientMessage, setGiftRecipientMessage] = useState("");
 
   useEffect(() => {
     void fetchPaymentStatus()
@@ -103,6 +114,14 @@ export default function CartPage() {
   useEffect(() => {
     setAppliedPromo(null);
     setPromoHint(null);
+    setAppliedLoyalty(null);
+    setLoyaltyHint(null);
+    setRedeemDraft("");
+    setAppliedGc(null);
+    setGcHint(null);
+    setGcDraft("");
+    setGiftRecipientEmail("");
+    setGiftRecipientMessage("");
   }, [linesSig]);
 
   function orderLinePayload() {
@@ -248,9 +267,91 @@ export default function CartPage() {
       }
       setAppliedPromo({ code: code.toUpperCase(), discount: r.discount });
       setPromoHint(`ใช้คูปอง ${code.toUpperCase()} แล้ว · ส่วนลด $${r.discount.toFixed(2)}`);
+      setAppliedLoyalty(null);
+      setLoyaltyHint(null);
+      setRedeemDraft("");
+      setAppliedGc(null);
+      setGcHint(null);
+      setGcDraft("");
     } catch (e) {
       setAppliedPromo(null);
       setPromoHint(e instanceof Error ? e.message : "ตรวจคูปองไม่สำเร็จ");
+    }
+  }
+
+  async function applyLoyalty() {
+    const t = getToken();
+    if (!t) {
+      router.push("/login?next=/cart");
+      return;
+    }
+    const n = Number.parseInt(redeemDraft.trim(), 10);
+    if (!Number.isFinite(n) || n < 1) {
+      setLoyaltyHint("กรอกจำนวนแต้มที่ใช้ (อย่างน้อย 1)");
+      return;
+    }
+    if (lines.length === 0) return;
+    setLoyaltyHint(null);
+    setErr(null);
+    try {
+      const r = await previewLoyalty(t, {
+        items: orderLinePayload(),
+        promo_code: appliedPromo?.code ?? null,
+        redeem_loyalty_points: n,
+      });
+      if (!r.valid) {
+        setAppliedLoyalty(null);
+        setLoyaltyHint(r.error ?? "ใช้แต้มไม่ได้");
+        return;
+      }
+      setAppliedLoyalty({ points: r.redeem_points_used, discount: r.loyalty_discount });
+      setLoyaltyHint(
+        `ใช้ ${r.redeem_points_used} แต้ม · ส่วนลด $${r.loyalty_discount.toFixed(2)} · หลังสั่งสำเร็จประมาณ +${r.points_earned_if_completed} แต้ม (${r.earn_points_per_dollar} แต้ม/$ จากยอดสินค้าหลังส่วนลด)`,
+      );
+      setAppliedGc(null);
+      setGcHint(null);
+      setGcDraft("");
+    } catch (e) {
+      setAppliedLoyalty(null);
+      setLoyaltyHint(e instanceof Error ? e.message : "ตรวจแต้มไม่สำเร็จ");
+    }
+  }
+
+  async function applyGiftCard() {
+    const t = getToken();
+    if (!t) {
+      router.push("/login?next=/cart");
+      return;
+    }
+    const code = gcDraft.trim();
+    if (!code) {
+      setGcHint("กรอกรหัส gift card");
+      return;
+    }
+    if (lines.length === 0) return;
+    setGcHint(null);
+    setErr(null);
+    try {
+      const r = await previewGiftCard(t, {
+        items: orderLinePayload(),
+        promo_code: appliedPromo?.code ?? null,
+        redeem_loyalty_points: appliedLoyalty?.points ?? 0,
+        gift_card_code: code,
+      });
+      if (!r.valid) {
+        setAppliedGc(null);
+        setGcHint(r.error ?? "ใช้ gift card ไม่ได้");
+        return;
+      }
+      setAppliedGc({ code: code.toUpperCase().replace(/\s+/g, ""), discount: r.gift_card_discount });
+      setGcHint(
+        r.gift_card_discount > 0
+          ? `ใช้ได้ · ส่วนลด $${r.gift_card_discount.toFixed(2)} (ยอดคงเหลือบนบัตรประมาณ $${(r.gift_card_balance ?? 0).toFixed(2)})`
+          : "รหัสถูกต้องแต่ยอดหักเป็น $0 กับตะกร้านี้",
+      );
+    } catch (e) {
+      setAppliedGc(null);
+      setGcHint(e instanceof Error ? e.message : "ตรวจ gift card ไม่สำเร็จ");
     }
   }
 
@@ -265,7 +366,11 @@ export default function CartPage() {
     const merchandiseSubtotal = cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
     const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
-    const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const loyaltyDiscount = appliedLoyalty?.discount ?? 0;
+    const afterLoyalty = Math.max(0, afterPromo - loyaltyDiscount);
+    const giftCardDiscount = appliedGc?.discount ?? 0;
+    const afterGift = Math.max(0, afterLoyalty - giftCardDiscount);
+    const orderTotal = afterGift + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
       title: "ยืนยันสั่งซื้อ",
       message: `สั่งซื้อ ${lines.length} รายการ ยอดรวมประมาณ $${orderTotal.toFixed(2)} (ชำระนอกเกตเวย์ — ไม่มีการตัดบัตรออนไลน์ในขั้นตอนนี้)`,
@@ -288,10 +393,15 @@ export default function CartPage() {
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
           promo_code: appliedPromo?.code ?? null,
+          redeem_loyalty_points: appliedLoyalty?.points ?? null,
+          gift_card_code: appliedGc?.code ?? null,
+          gift_cards_recipient_email: giftRecipientEmail.trim() ? giftRecipientEmail.trim() : null,
+          gift_cards_message: giftRecipientMessage.trim() ? giftRecipientMessage.trim() : null,
         },
       );
       clearCart();
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      notifyProfileUpdated();
       setLines([]);
       router.push("/orders");
       router.refresh();
@@ -313,7 +423,11 @@ export default function CartPage() {
     const merchandiseSubtotal = cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
     const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
-    const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
+    const loyaltyDiscount = appliedLoyalty?.discount ?? 0;
+    const afterLoyalty = Math.max(0, afterPromo - loyaltyDiscount);
+    const giftCardDiscount = appliedGc?.discount ?? 0;
+    const afterGift = Math.max(0, afterLoyalty - giftCardDiscount);
+    const orderTotal = afterGift + (giftWrap ? GIFT_WRAP_FEE : 0);
     const ok = await confirm({
       title: "ไปชำระด้วย Stripe",
       message: `คุณจะถูกพาไปชำระผ่าน Stripe${"\n"}ยอดประมาณ $${orderTotal.toFixed(2)} (หากใช้ test key จะเป็นโหมดทดสอบ)`,
@@ -335,6 +449,10 @@ export default function CartPage() {
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
           promo_code: appliedPromo?.code ?? null,
+          redeem_loyalty_points: appliedLoyalty?.points ?? null,
+          gift_card_code: appliedGc?.code ?? null,
+          gift_cards_recipient_email: giftRecipientEmail.trim() ? giftRecipientEmail.trim() : null,
+          gift_cards_message: giftRecipientMessage.trim() ? giftRecipientMessage.trim() : null,
         },
       );
       window.location.assign(url);
@@ -348,7 +466,11 @@ export default function CartPage() {
   const GIFT_WRAP_FEE = 4.99;
   const promoDiscount = appliedPromo?.discount ?? 0;
   const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
-  const orderTotal = afterPromo + (giftWrap ? GIFT_WRAP_FEE : 0);
+  const loyaltyDiscount = appliedLoyalty?.discount ?? 0;
+  const afterLoyalty = Math.max(0, afterPromo - loyaltyDiscount);
+  const giftCardDiscount = appliedGc?.discount ?? 0;
+  const afterGift = Math.max(0, afterLoyalty - giftCardDiscount);
+  const orderTotal = afterGift + (giftWrap ? GIFT_WRAP_FEE : 0);
 
   return (
     <div className="min-h-screen">
@@ -501,7 +623,12 @@ export default function CartPage() {
                           onClick={() => {
                             setAppliedPromo(null);
                             setPromoHint(null);
-                            setPromoDraft("");
+                            setAppliedLoyalty(null);
+                            setLoyaltyHint(null);
+                            setRedeemDraft("");
+                            setAppliedGc(null);
+                            setGcHint(null);
+                            setGcDraft("");
                           }}
                           className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 dark:border-zinc-600 dark:text-stone-200"
                         >
@@ -517,6 +644,130 @@ export default function CartPage() {
                       {promoHint}
                     </p>
                   ) : null}
+                </div>
+                <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-50">Loyalty points</h2>
+                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                    แลกแต้มเป็นส่วนลดยอดสินค้า (หลังคูปอง) — ค่าเริ่มต้น{" "}
+                    <span className="font-medium text-teal-700 dark:text-teal-400">100 แต้ม = $1</span>
+                    หลังชำระได้รับแต้มจากยอดสินค้าหลังส่วนลด (ไม่นับค่าห่อ)
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      value={redeemDraft}
+                      onChange={(e) => setRedeemDraft(e.target.value.replace(/[^\d]/g, ""))}
+                      placeholder="แต้มที่ใช้"
+                      className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || lines.length === 0}
+                        onClick={() => void applyLoyalty()}
+                        className="rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:opacity-50 dark:bg-amber-600 dark:hover:bg-amber-500"
+                      >
+                        Apply points
+                      </button>
+                      {appliedLoyalty ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppliedLoyalty(null);
+                            setLoyaltyHint(null);
+                            setRedeemDraft("");
+                            setAppliedGc(null);
+                            setGcHint(null);
+                            setGcDraft("");
+                          }}
+                          className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 dark:border-zinc-600 dark:text-stone-200"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {loyaltyHint ? (
+                    <p
+                      className={`mt-2 text-xs ${appliedLoyalty ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}
+                    >
+                      {loyaltyHint}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+                  <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-50">Gift card</h2>
+                  <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                    แลกรหัสเป็นส่วนลดยอดสินค้าหลังคูปองและแต้ม — ซื้อการ์ดได้ที่{" "}
+                    <Link href="/gift-cards" className="font-medium text-teal-700 underline dark:text-teal-400">
+                      Gift cards
+                    </Link>
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={gcDraft}
+                      onChange={(e) => setGcDraft(e.target.value)}
+                      placeholder="วางรหัส เช่น GC…"
+                      maxLength={40}
+                      className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2 font-mono text-sm outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || lines.length === 0}
+                        onClick={() => void applyGiftCard()}
+                        className="rounded-xl bg-violet-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-600 disabled:opacity-50 dark:bg-violet-600 dark:hover:bg-violet-500"
+                      >
+                        Apply
+                      </button>
+                      {appliedGc ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppliedGc(null);
+                            setGcHint(null);
+                            setGcDraft("");
+                          }}
+                          className="rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 dark:border-zinc-600 dark:text-stone-200"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {gcHint ? (
+                    <p
+                      className={`mt-2 text-xs ${appliedGc && appliedGc.discount > 0 ? "text-emerald-800 dark:text-emerald-200" : "text-amber-800 dark:text-amber-200"}`}
+                    >
+                      {gcHint}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-xs font-medium text-stone-600 dark:text-stone-400">
+                    Optional — for purchases that include gift cards (stored on each issued code)
+                  </p>
+                  <label className="mt-1 block">
+                    <span className="text-xs text-stone-500 dark:text-stone-400">Recipient email</span>
+                    <input
+                      type="email"
+                      value={giftRecipientEmail}
+                      onChange={(e) => setGiftRecipientEmail(e.target.value)}
+                      placeholder="friend@example.com"
+                      className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                  </label>
+                  <label className="mt-2 block">
+                    <span className="text-xs text-stone-500 dark:text-stone-400">Note on issued codes</span>
+                    <textarea
+                      value={giftRecipientMessage}
+                      onChange={(e) => setGiftRecipientMessage(e.target.value)}
+                      maxLength={2000}
+                      rows={2}
+                      placeholder="Happy birthday — enjoy!"
+                      className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                    />
+                  </label>
                 </div>
                 <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
                   <label className="flex cursor-pointer items-start gap-3">
@@ -558,6 +809,16 @@ export default function CartPage() {
                     {promoDiscount > 0 ? (
                       <p className="text-sm tabular-nums text-emerald-700 dark:text-emerald-400">
                         Promo ({appliedPromo?.code}) · −${promoDiscount.toFixed(2)}
+                      </p>
+                    ) : null}
+                    {loyaltyDiscount > 0 ? (
+                      <p className="text-sm tabular-nums text-amber-800 dark:text-amber-300">
+                        Loyalty ({appliedLoyalty?.points} pts) · −${loyaltyDiscount.toFixed(2)}
+                      </p>
+                    ) : null}
+                    {giftCardDiscount > 0 ? (
+                      <p className="text-sm tabular-nums text-violet-800 dark:text-violet-300">
+                        Gift card · −${giftCardDiscount.toFixed(2)}
                       </p>
                     ) : null}
                     {giftWrap ? (

@@ -475,6 +475,51 @@ def repair_legacy_image_urls(db: Session) -> int:
     return int(result.rowcount or 0)
 
 
+def ensure_gift_card_products(db: Session) -> None:
+    """Seed purchasable digital gift card SKUs (category gift-cards)."""
+
+    specs = [
+        {
+            "name": "Gift card — $25",
+            "description": (
+                "Digital gift card. After purchase, codes appear under Gift cards in the header. "
+                "Share a code with someone else — they redeem at checkout (after promo & loyalty discounts)."
+            ),
+            "price": "25.00",
+        },
+        {
+            "name": "Gift card — $50",
+            "description": "Digital gift card; balance can be used across multiple orders until it reaches $0.",
+            "price": "50.00",
+        },
+        {
+            "name": "Gift card — $100",
+            "description": "Digital gift card; partial redemption supported — remainder stays on the code.",
+            "price": "100.00",
+        },
+    ]
+    img = _U.format(path="photo-1513201099705-a9746e1e201f")
+    added = False
+    for s in specs:
+        if db.scalar(select(Product).where(Product.name == s["name"])):
+            continue
+        db.add(
+            Product(
+                name=s["name"],
+                description=s["description"],
+                price=Decimal(s["price"]),
+                category="gift-cards",
+                tags=["gift-card"],
+                image_url=img,
+                stock=999_999,
+                is_gift_card=True,
+            ),
+        )
+        added = True
+    if added:
+        db.commit()
+
+
 def ensure_welcome_promo(db: Session) -> None:
     """Seed a demo 10%-off code for cart/checkout testing."""
 

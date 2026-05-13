@@ -12,6 +12,7 @@ from app.database import Base, SessionLocal, apply_runtime_schema_patches, engin
 from app.middleware.request_id import RequestIdMiddleware
 from app.models import (
     CartItem,
+    GiftCard,
     Interaction,
     Order,
     OrderItem,
@@ -26,10 +27,25 @@ from app.models import (
     User,
     UserAddress,
 )  # noqa: F401
-from app.routers import addresses, admin, auth, cart, events, health, orders, payments, products, promos, recommendations
+from app.routers import (
+    addresses,
+    admin,
+    auth,
+    cart,
+    events,
+    gift_cards,
+    health,
+    loyalty,
+    orders,
+    payments,
+    products,
+    promos,
+    recommendations,
+)
 from app.services.bootstrap_admin import ensure_bootstrap_admin
 from app.services.product_gallery import backfill_product_galleries_from_legacy_image_url
 from app.services.seed import (
+    ensure_gift_card_products,
     ensure_welcome_promo,
     insert_missing_demo_products,
     repair_legacy_image_urls,
@@ -53,6 +69,7 @@ async def lifespan(_app: FastAPI):
             sync_demo_catalog_images(db)
             sync_demo_product_videos(db)
             backfill_product_galleries_from_legacy_image_url(db)
+            ensure_gift_card_products(db)
             ensure_welcome_promo(db)
             ensure_bootstrap_admin(db)
         finally:
@@ -96,6 +113,8 @@ app.include_router(products.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
 app.include_router(promos.router, prefix="/api")
+app.include_router(loyalty.router, prefix="/api")
+app.include_router(gift_cards.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")

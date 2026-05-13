@@ -33,6 +33,7 @@ class UserPublic(BaseModel):
     email: str
     name: str
     is_admin: bool
+    loyalty_points: int = 0
     avatar_url: str | None = None
     phone: str | None = None
     address_line1: str | None = None
