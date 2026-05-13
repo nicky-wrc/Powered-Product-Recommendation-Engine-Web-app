@@ -22,11 +22,13 @@ from app.schemas.product_qa import (
     ProductQuestionCreate,
 )
 from app.schemas.products import (
+    ProductBrandRow,
     ProductListResponse,
     ProductSuggestItem,
     ProductWithSimilar,
     product_public,
 )
+from app.services.brand_slug import brand_name_for_slug, slugify_brand
 from app.schemas.reviews import (
     ProductReviewCreate,
     ProductReviewCreateResponse,
@@ -98,6 +100,21 @@ def list_categories(db: Session = Depends(get_db)) -> list[str]:
     return [c for c in rows if c]
 
 
+@router.get("/brands", response_model=list[ProductBrandRow])
+def list_product_brands(db: Session = Depends(get_db)) -> list[ProductBrandRow]:
+    stmt = (
+        select(Product.brand, func.count(Product.id))
+        .where(Product.brand.isnot(None))
+        .where(func.trim(Product.brand) != "")
+        .group_by(Product.brand)
+        .order_by(Product.brand.asc())
+    )
+    rows = db.execute(stmt).all()
+    return [
+        ProductBrandRow(name=str(name), slug=slugify_brand(str(name)), product_count=int(cnt or 0)) for name, cnt in rows
+    ]
+
+
 @router.get("", response_model=ProductListResponse)
 def list_products(
     page: int = Query(1, ge=1),
@@ -112,6 +129,11 @@ def list_products(
     min_price: float | None = Query(None, ge=0, description="Minimum unit price inclusive"),
     max_price: float | None = Query(None, ge=0, description="Maximum unit price inclusive"),
     on_sale: bool = Query(False, description="Only products with an active flash sale"),
+    brand_slug: str | None = Query(
+        None,
+        max_length=160,
+        description="Filter by storefront brand slug (from /products/brands)",
+    ),
     db: Session = Depends(get_db),
 ) -> ProductListResponse:
     if min_price is not None and max_price is not None and min_price > max_price:
@@ -119,8 +141,17 @@ def list_products(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "min_price must be less than or equal to max_price",
         )
-    stmt = select(Product)
-    count_stmt = select(func.count()).select_from(Product)
+    if brand_slug and brand_slug.strip():
+        raw_names = db.scalars(select(Product.brand).where(Product.brand.isnot(None)).distinct()).all()
+        names = [str(n) for n in raw_names if n and str(n).strip()]
+        canonical = brand_name_for_slug(names, brand_slug.strip())
+        if canonical is None:
+            return ProductListResponse(products=[], total=0, page=page, total_pages=0)
+        stmt = select(Product).where(Product.brand == canonical)
+        count_stmt = select(func.count()).select_from(Product).where(Product.brand == canonical)
+    else:
+        stmt = select(Product)
+        count_stmt = select(func.count()).select_from(Product)
     stmt, count_stmt = _apply_filters(
         stmt,
         count_stmt,

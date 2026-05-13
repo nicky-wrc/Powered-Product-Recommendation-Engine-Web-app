@@ -50,6 +50,8 @@ export type Product = {
   sale_price?: number | null;
   sale_ends_at?: string | null;
   category: string | null;
+  brand?: string | null;
+  brand_slug?: string | null;
   tags: string[] | null;
   image_url: string | null;
   /** YouTube / Vimeo watch URL; PDP converts to embed. */
@@ -386,6 +388,20 @@ export async function fetchProductCategories(): Promise<string[]> {
   return r.json();
 }
 
+export type ProductBrandRow = {
+  name: string;
+  slug: string;
+  product_count: number;
+};
+
+export async function fetchProductBrands(): Promise<ProductBrandRow[]> {
+  const r = await fetch(`${API_BASE}/api/products/brands`, {
+    next: { revalidate: 60 },
+  });
+  if (!r.ok) throw new Error("Failed to load brands");
+  return r.json();
+}
+
 export const CATALOG_SORTS = ["newest", "price_asc", "price_desc", "name_asc"] as const;
 export type CatalogSort = (typeof CATALOG_SORTS)[number];
 
@@ -417,6 +433,8 @@ export async function fetchProducts(params: {
   maxPrice?: number;
   /** Only products with an active flash sale */
   onSale?: boolean;
+  /** Filter by brand slug from GET /products/brands */
+  brandSlug?: string;
 }): Promise<{ products: Product[]; total: number; page: number; total_pages: number }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set("page", String(params.page));
@@ -428,6 +446,7 @@ export async function fetchProducts(params: {
   if (params.minPrice != null && Number.isFinite(params.minPrice)) sp.set("min_price", String(params.minPrice));
   if (params.maxPrice != null && Number.isFinite(params.maxPrice)) sp.set("max_price", String(params.maxPrice));
   if (params.onSale) sp.set("on_sale", "true");
+  if (params.brandSlug?.trim()) sp.set("brand_slug", params.brandSlug.trim());
   const r = await fetch(`${API_BASE}/api/products?${sp.toString()}`, {
     next: { revalidate: 15 },
   });
@@ -733,6 +752,7 @@ export type AdminProductCreate = {
   description?: string | null;
   price: number;
   category?: string | null;
+  brand?: string | null;
   tags?: string[] | null;
   image_url?: string | null;
   video_url?: string | null;
@@ -956,6 +976,14 @@ export async function deleteCartItem(
   return r.json();
 }
 
+export type OrderTrackingStep = {
+  key: string;
+  label: string;
+  done: boolean;
+  current: boolean;
+  at: string | null;
+};
+
 export type OrderPublic = {
   id: string;
   user_id: string;
@@ -971,6 +999,11 @@ export type OrderPublic = {
   loyalty_points_earned?: number | null;
   gift_card_code?: string | null;
   gift_card_discount?: number | null;
+  tracking_carrier?: string | null;
+  tracking_number?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
+  tracking_steps?: OrderTrackingStep[];
   created_at: string;
   items: {
     product_id: string;
@@ -1276,6 +1309,47 @@ export async function cancelOrder(token: string, orderId: string): Promise<Order
   const r = await fetch(`${API_BASE}/api/orders/${orderId}/cancel`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminListOrders(
+  token: string,
+  params: { limit?: number; status?: string } = {},
+): Promise<OrderPublic[]> {
+  const sp = new URLSearchParams();
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.status?.trim()) sp.set("status", params.status.trim());
+  const qs = sp.toString();
+  const r = await fetch(`${API_BASE}/api/admin/orders${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export type AdminShipmentPatch = {
+  tracking_carrier?: string | null;
+  tracking_number?: string | null;
+  mark_shipped?: boolean;
+  mark_delivered?: boolean;
+};
+
+export async function adminPatchOrderShipment(
+  token: string,
+  orderId: string,
+  body: AdminShipmentPatch,
+): Promise<OrderPublic> {
+  const r = await fetch(`${API_BASE}/api/admin/orders/${orderId}/shipment`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
     cache: "no-store",
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));

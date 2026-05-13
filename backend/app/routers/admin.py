@@ -1,12 +1,13 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.deps import get_admin_user
@@ -21,6 +22,7 @@ from app.models.product_review import ProductReview
 from app.models.product_variant import ProductVariant
 from app.models.promo_code import PromoCode
 from app.models.user import User
+from app.schemas.orders import OrderPublic, order_public
 from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
 from app.schemas.products import (
     AdminProductDetailResponse,
@@ -144,6 +146,7 @@ def create_product(
         description=(body.description.strip() if body.description else None) or None,
         price=Decimal(str(body.price)),
         category=(body.category.strip() if body.category else None) or None,
+        brand=(body.brand.strip() if body.brand else None) or None,
         tags=body.tags,
         image_url=(body.image_url.strip() if body.image_url else None) or None,
         video_url=body.video_url,
@@ -224,6 +227,12 @@ def update_product(
             p.category = None
         else:
             p.category = str(c).strip() or None
+    if "brand" in data:
+        b = data["brand"]
+        if b is None:
+            p.brand = None
+        else:
+            p.brand = str(b).strip() or None
     if "tags" in data:
         p.tags = data["tags"]
     if "image_url" in data:
@@ -468,6 +477,78 @@ def delete_product(
             status.HTTP_409_CONFLICT,
             "Cannot delete product that appears on orders. Remove or archive it instead.",
         ) from None
+
+
+class AdminOrderShipmentBody(BaseModel):
+    tracking_carrier: str | None = Field(None, max_length=100)
+    tracking_number: str | None = Field(None, max_length=120)
+    mark_shipped: bool = False
+    mark_delivered: bool = False
+
+
+@router.get("/orders", response_model=list[OrderPublic])
+def admin_list_orders(
+    limit: int = Query(50, ge=1, le=200),
+    status: str | None = Query(None, max_length=32),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> list[OrderPublic]:
+    stmt = select(Order).options(selectinload(Order.items)).order_by(Order.created_at.desc()).limit(limit)
+    if status and status.strip():
+        stmt = stmt.where(Order.status == status.strip())
+    rows = db.scalars(stmt).all()
+    return [order_public(o) for o in rows]
+
+
+@router.patch("/orders/{order_id}/shipment", response_model=OrderPublic)
+def admin_update_order_shipment(
+    order_id: UUID,
+    body: AdminOrderShipmentBody,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> OrderPublic:
+    o = db.scalar(
+        select(Order).where(Order.id == order_id).options(selectinload(Order.items)).with_for_update(),
+    )
+    if o is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    if o.status == "cancelled":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Cannot update shipment for a cancelled order.")
+
+    if body.tracking_carrier is not None:
+        t = body.tracking_carrier.strip()
+        o.tracking_carrier = t or None
+    if body.tracking_number is not None:
+        t = body.tracking_number.strip()
+        o.tracking_number = t or None
+
+    now = datetime.now(timezone.utc)
+    if body.mark_shipped:
+        if o.status == "processing":
+            if o.shipped_at is None:
+                o.shipped_at = now
+            o.status = "shipped"
+        elif o.status == "shipped":
+            if o.shipped_at is None:
+                o.shipped_at = now
+        elif o.status == "completed":
+            if o.shipped_at is None:
+                o.shipped_at = now
+
+    if body.mark_delivered:
+        if o.shipped_at is None:
+            o.shipped_at = now
+        if o.delivered_at is None:
+            o.delivered_at = now
+        o.status = "completed"
+
+    db.commit()
+    db.refresh(o)
+    o2 = db.scalar(
+        select(Order).where(Order.id == order_id).options(selectinload(Order.items)),
+    )
+    assert o2 is not None
+    return order_public(o2)
 
 
 class PromoCodeAdminCreate(BaseModel):

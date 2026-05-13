@@ -18,6 +18,7 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     category: Mapped[str | None] = mapped_column(String(100), index=True, nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String(64)), nullable=True)
     image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     # YouTube or Vimeo page URL; PDP resolves nocookie / Vimeo player embed.

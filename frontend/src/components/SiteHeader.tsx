@@ -217,6 +217,9 @@ export function SiteHeader() {
           <Link href="/products" className={navQuiet}>
             Catalog
           </Link>
+          <Link href="/brands" className={navQuiet}>
+            Brands
+          </Link>
           <Link href="/deals" className={navQuiet}>
             Deals
           </Link>
@@ -377,6 +380,9 @@ export function SiteHeader() {
               <p className="px-1 text-[11px] font-semibold uppercase tracking-wider text-stone-400 dark:text-stone-500">Shop</p>
               <Link href="/products" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
                 Catalog
+              </Link>
+              <Link href="/brands" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
+                Brands
               </Link>
               <Link href="/deals" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
                 Deals

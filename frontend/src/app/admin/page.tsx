@@ -55,6 +55,9 @@ export default function AdminDashboardPage() {
           <Link href="/admin/inventory" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
             สต็อกสินค้า →
           </Link>
+          <Link href="/admin/orders" className="font-medium text-teal-700 hover:underline dark:text-teal-400">
+            คำสั่งซื้อ / ขนส่ง →
+          </Link>
         </p>
       </div>
 

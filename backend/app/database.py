@@ -182,6 +182,20 @@ def apply_runtime_schema_patches() -> None:
         conn.execute(
             text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmation_email_sent_at TIMESTAMPTZ;"),
         )
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(120);"))
+        conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_products_brand_norm
+                ON products (LOWER(TRIM(brand)))
+                WHERE brand IS NOT NULL AND BTRIM(brand) <> '';
+                """
+            ),
+        )
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_carrier VARCHAR(100);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(120);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;"))
 
 
 class Base(DeclarativeBase):

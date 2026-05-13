@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ReorderOrderButton } from "@/components/ReorderOrderButton";
 import { OrderFulfillmentActions } from "@/components/OrderFulfillmentActions";
+import { OrderTrackingTimeline } from "@/components/OrderTrackingTimeline";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fetchMyOrders, getToken, notifyProfileUpdated, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
@@ -283,6 +284,7 @@ export default function OrdersPage() {
                     </li>
                   ))}
                 </ul>
+                <OrderTrackingTimeline order={o} />
                 {o.promo_code && (o.promo_discount ?? 0) > 0 ? (
                   <p className="mt-3 text-sm text-teal-800 dark:text-teal-200">
                     Promo <span className="font-mono font-semibold">{o.promo_code}</span>

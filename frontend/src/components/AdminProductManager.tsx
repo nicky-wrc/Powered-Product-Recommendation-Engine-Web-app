@@ -34,6 +34,7 @@ type FormDraft = {
   sale_price: string;
   sale_ends_at: string;
   category: string;
+  brand: string;
   tags: string[];
   image_url: string;
   video_url: string;
@@ -103,6 +104,7 @@ const emptyDraft: FormDraft = {
   sale_price: "",
   sale_ends_at: "",
   category: "",
+  brand: "",
   tags: [],
   image_url: "",
   video_url: "",
@@ -266,6 +268,7 @@ export function AdminProductManager({ token, mode }: Props) {
       sale_price: prod.sale_price != null ? String(prod.sale_price) : "",
       sale_ends_at: toDatetimeLocalValue(prod.sale_ends_at),
       category: prod.category ?? "",
+      brand: prod.brand ?? "",
       tags: [...(prod.tags ?? [])],
       image_url: prod.image_url ?? "",
       video_url: prod.video_url ?? "",
@@ -296,6 +299,7 @@ export function AdminProductManager({ token, mode }: Props) {
       sale_price: p.sale_price != null ? String(p.sale_price) : "",
       sale_ends_at: toDatetimeLocalValue(p.sale_ends_at),
       category: p.category ?? "",
+      brand: p.brand ?? "",
       tags: [...(p.tags ?? [])],
       image_url: p.image_url ?? "",
       video_url: p.video_url ?? "",
@@ -357,6 +361,7 @@ export function AdminProductManager({ token, mode }: Props) {
         description: createForm.description.trim() || null,
         price,
         category: createForm.category.trim() || null,
+        brand: createForm.brand.trim() || null,
         tags: tagsForApi(createForm.tags),
         image_url,
         video_url: createForm.video_url.trim() || null,
@@ -427,6 +432,7 @@ export function AdminProductManager({ token, mode }: Props) {
         description: form.description.trim() || null,
         price,
         category: form.category.trim() || null,
+        brand: form.brand.trim() || null,
         tags: tagsForApi(form.tags),
         stock,
         video_url: form.video_url.trim() || null,
@@ -767,6 +773,16 @@ export function AdminProductManager({ token, mode }: Props) {
                   <option key={c} value={c} />
                 ))}
               </datalist>
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              แบรนด์ — ใช้สร้างหน้า storefront (/brands)
+              <input
+                value={createForm.brand}
+                onChange={(e) => setCreateForm((d) => ({ ...d, brand: e.target.value }))}
+                placeholder="เช่น Acme Co. — ว่างได้"
+                maxLength={120}
+                className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
             </label>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
               แท็ก
@@ -1200,6 +1216,16 @@ export function AdminProductManager({ token, mode }: Props) {
                           ))}
                         </datalist>
                       </div>
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        แบรนด์
+                        <input
+                          value={form.brand}
+                          onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+                          maxLength={120}
+                          placeholder="เช่น Acme Co."
+                          className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
                       <div className="sm:col-span-2">
                         <p className="mb-1 text-[11px] font-medium text-stone-500 dark:text-stone-400">แท็ก</p>
                         <TagInput

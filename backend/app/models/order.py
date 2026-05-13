@@ -35,6 +35,10 @@ class Order(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    tracking_carrier: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tracking_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(

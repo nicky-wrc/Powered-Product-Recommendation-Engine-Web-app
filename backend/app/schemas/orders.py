@@ -35,6 +35,59 @@ class OrderItemPublic(BaseModel):
     variant_label: str | None = None
 
 
+class OrderTrackingStepPublic(BaseModel):
+    key: str
+    label: str
+    done: bool
+    current: bool = False
+    at: datetime | None = None
+
+
+def order_tracking_steps(o: Order) -> list[OrderTrackingStepPublic]:
+    if o.status == "cancelled":
+        return [
+            OrderTrackingStepPublic(key="ordered", label="สั่งซื้อแล้ว", done=True, current=False, at=o.created_at),
+            OrderTrackingStepPublic(key="cancelled", label="ยกเลิกคำสั่งซื้อ", done=True, current=True, at=None),
+        ]
+
+    ts = o.created_at
+    ship_at = getattr(o, "shipped_at", None)
+    del_at = getattr(o, "delivered_at", None)
+    ship_done = ship_at is not None or o.status in ("shipped", "completed")
+    del_done = del_at is not None or o.status == "completed"
+
+    if o.status == "completed" and ship_at is None and del_at is None:
+        ship_at = del_at = ts
+        ship_done = del_done = True
+    elif o.status == "completed" and ship_at is None and del_at is not None:
+        ship_at = del_at
+        ship_done = True
+    else:
+        if ship_done and ship_at is None:
+            ship_at = ts
+        if del_done and del_at is None:
+            del_at = ship_at or ts
+
+    if o.status == "processing" and not ship_done:
+        ship_label = "กำลังจัดเตรียม"
+    elif not ship_done:
+        ship_label = "รอจัดส่ง"
+    else:
+        ship_label = "จัดส่งแล้ว"
+
+    steps = [
+        OrderTrackingStepPublic(key="ordered", label="สั่งซื้อแล้ว", done=True, current=False, at=ts),
+        OrderTrackingStepPublic(key="shipped", label=ship_label, done=ship_done, current=False, at=ship_at),
+        OrderTrackingStepPublic(key="delivered", label="ส่งถึงแล้ว", done=del_done, current=False, at=del_at),
+    ]
+    first_open = next((i for i, s in enumerate(steps) if not s.done), None)
+    if first_open is not None:
+        steps[first_open].current = True
+    else:
+        steps[-1].current = True
+    return steps
+
+
 class OrderPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,6 +105,11 @@ class OrderPublic(BaseModel):
     loyalty_points_earned: int | None = None
     gift_card_code: str | None = None
     gift_card_discount: float | None = None
+    tracking_carrier: str | None = None
+    tracking_number: str | None = None
+    shipped_at: datetime | None = None
+    delivered_at: datetime | None = None
+    tracking_steps: list[OrderTrackingStepPublic] = Field(default_factory=list)
     created_at: datetime
     items: list[OrderItemPublic]
 
@@ -75,6 +133,11 @@ def order_public(o: Order) -> OrderPublic:
         loyalty_points_earned=getattr(o, "loyalty_points_earned", None),
         gift_card_code=getattr(o, "gift_card_code", None),
         gift_card_discount=float(gcd) if gcd is not None else None,
+        tracking_carrier=getattr(o, "tracking_carrier", None),
+        tracking_number=getattr(o, "tracking_number", None),
+        shipped_at=getattr(o, "shipped_at", None),
+        delivered_at=getattr(o, "delivered_at", None),
+        tracking_steps=order_tracking_steps(o),
         created_at=o.created_at,
         items=[
             OrderItemPublic(

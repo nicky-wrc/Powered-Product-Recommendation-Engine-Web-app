@@ -79,6 +79,15 @@ export function ProductCard({ p, priority = false }: Props) {
         </div>
         <div className="flex flex-1 flex-col gap-1 p-4">
           <SustainabilityBadge product={p} className="mb-0.5" />
+          {p.brand && p.brand_slug ? (
+            <Link
+              href={`/brand/${encodeURIComponent(p.brand_slug)}`}
+              onClick={(e) => e.stopPropagation()}
+              className="line-clamp-1 text-[11px] font-semibold uppercase tracking-wide text-teal-700 hover:underline dark:text-teal-400"
+            >
+              {p.brand}
+            </Link>
+          ) : null}
           <p className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-stone-900 dark:text-stone-50">
             {p.name}
           </p>

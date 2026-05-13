@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.product import Product
+from app.services.brand_slug import slugify_brand
 from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
 from app.services.product_codes import normalize_product_code
 from app.services.product_pricing import effective_unit_price, flash_sale_active
@@ -32,6 +33,8 @@ class ProductPublic(BaseModel):
     sale_price: float | None = None
     sale_ends_at: datetime | None = None
     category: str | None
+    brand: str | None = None
+    brand_slug: str | None = None
     tags: list[str] | None
     image_url: str | None
     image_urls: list[str] = Field(default_factory=list)
@@ -51,6 +54,13 @@ def _product_seo_fields(p: Product) -> dict[str, str | None]:
         "meta_title": p.meta_title,
         "meta_description": p.meta_description,
     }
+
+
+def _brand_public_fields(p: Product) -> dict[str, str | None]:
+    raw = (getattr(p, "brand", None) or "").strip()
+    if not raw:
+        return {"brand": None, "brand_slug": None}
+    return {"brand": raw, "brand_slug": slugify_brand(raw)}
 def product_public(
     p: Product,
     *,
@@ -90,6 +100,7 @@ def product_public(
             sale_price=None,
             sale_ends_at=None,
             category=p.category,
+            **_brand_public_fields(p),
             tags=list(p.tags) if p.tags is not None else None,
             image_url=p.image_url,
             image_urls=urls,
@@ -114,6 +125,7 @@ def product_public(
             sale_price=None,
             sale_ends_at=None,
             category=p.category,
+            **_brand_public_fields(p),
             tags=list(p.tags) if p.tags is not None else None,
             image_url=p.image_url,
             image_urls=urls,
@@ -138,6 +150,7 @@ def product_public(
         sale_price=float(p.sale_price) if p.sale_price is not None else None,
         sale_ends_at=p.sale_ends_at,
         category=p.category,
+        **_brand_public_fields(p),
         tags=list(p.tags) if p.tags is not None else None,
         image_url=p.image_url,
         image_urls=urls,
@@ -155,6 +168,12 @@ class ProductListResponse(BaseModel):
     total: int
     page: int
     total_pages: int
+
+
+class ProductBrandRow(BaseModel):
+    name: str
+    slug: str
+    product_count: int
 
 
 class ProductSuggestItem(BaseModel):
@@ -215,6 +234,7 @@ class ProductCreate(BaseModel):
     description: str | None = None
     price: float = Field(ge=0)
     category: str | None = Field(None, max_length=100)
+    brand: str | None = Field(None, max_length=120)
     tags: list[str] | None = None
     image_url: str | None = Field(None, max_length=2048)
     video_url: str | None = Field(None, max_length=2048)
@@ -273,12 +293,23 @@ class ProductCreate(BaseModel):
         out = [t.strip() for t in v if t and str(t).strip()]
         return out or None
 
+    @field_validator("brand", mode="before")
+    @classmethod
+    def _strip_brand_create(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s or None
+        return v
+
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=500)
     description: str | None = None
     price: float | None = Field(None, ge=0)
     category: str | None = Field(None, max_length=100)
+    brand: str | None = Field(None, max_length=120)
     tags: list[str] | None = None
     image_url: str | None = Field(None, max_length=2048)
     video_url: str | None = Field(None, max_length=2048)
@@ -313,7 +344,7 @@ class ProductUpdate(BaseModel):
 
     @field_validator("image_url", "video_url", mode="before")
     @classmethod
-    def _strip_optional_url(cls, v: object) -> object:
+    def _strip_optional_url_update(cls, v: object) -> object:
         if v is None:
             return None
         if isinstance(v, str):
@@ -323,8 +354,20 @@ class ProductUpdate(BaseModel):
 
     @field_validator("tags")
     @classmethod
-    def _normalize_tags(cls, v: list[str] | None) -> list[str] | None:
+    def _normalize_tags_update(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return None
         out = [t.strip() for t in v if t and str(t).strip()]
         return out or None
+
+    @field_validator("brand", mode="before")
+    @classmethod
+    def _strip_brand_update(cls, v: object) -> object:
+        if v is None:
+            return None
+        if v == "":
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            return s or None
+        return v

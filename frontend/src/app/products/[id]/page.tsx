@@ -144,6 +144,16 @@ export default async function ProductDetailPage({ params }: Props) {
                 {p.category}
               </p>
             ) : null}
+            {p.brand && p.brand_slug ? (
+              <p className="text-sm text-stone-600 dark:text-stone-400">
+                <Link
+                  href={`/brand/${encodeURIComponent(p.brand_slug)}`}
+                  className="font-semibold text-teal-700 hover:underline dark:text-teal-400"
+                >
+                  {p.brand}
+                </Link>
+              </p>
+            ) : null}
             <SustainabilityBadge product={p} />
             {p.is_gift_card ? (
               <p className="inline-flex w-fit items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-900 dark:border-violet-800/60 dark:bg-violet-950/50 dark:text-violet-200">
