@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # PDF invoice branding (optional logo: PNG/JPEG path on server, or files under uploads/logo/).
     store_invoice_name: str = "NickyShopEngine"
     invoice_logo_path: str | None = None
+    # Optional lines on PDF (Thai/English). Address: use \\n between lines in .env or multiline in .env file if supported.
+    store_invoice_address: str = ""
+    store_tax_id: str | None = None
+    store_phone: str | None = None
 
 
 settings = Settings()
