@@ -415,6 +415,8 @@ export async function fetchProducts(params: {
   sort?: CatalogSort;
   minPrice?: number;
   maxPrice?: number;
+  /** Only products with an active flash sale */
+  onSale?: boolean;
 }): Promise<{ products: Product[]; total: number; page: number; total_pages: number }> {
   const sp = new URLSearchParams();
   if (params.page) sp.set("page", String(params.page));
@@ -425,6 +427,7 @@ export async function fetchProducts(params: {
   if (params.sort && params.sort !== "newest") sp.set("sort", params.sort);
   if (params.minPrice != null && Number.isFinite(params.minPrice)) sp.set("min_price", String(params.minPrice));
   if (params.maxPrice != null && Number.isFinite(params.maxPrice)) sp.set("max_price", String(params.maxPrice));
+  if (params.onSale) sp.set("on_sale", "true");
   const r = await fetch(`${API_BASE}/api/products?${sp.toString()}`, {
     next: { revalidate: 15 },
   });
@@ -613,6 +616,7 @@ export type ProductQaAnswer = {
   body: string;
   author_name: string;
   created_at: string;
+  is_official?: boolean;
 };
 
 export type ProductQaItem = {
@@ -1243,6 +1247,34 @@ export async function fetchMyOrders(
   if (filters.max_total != null && !Number.isNaN(filters.max_total)) params.set("max_total", String(filters.max_total));
   const qs = params.toString();
   const r = await fetch(`${API_BASE}/api/orders/me${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function downloadOrderInvoice(token: string, orderId: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/orders/${orderId}/invoice`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `invoice-${orderId.slice(0, 8)}.pdf`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function cancelOrder(token: string, orderId: string): Promise<OrderPublic> {
+  const r = await fetch(`${API_BASE}/api/orders/${orderId}/cancel`, {
+    method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });

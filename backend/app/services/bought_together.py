@@ -5,18 +5,24 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.order import OrderItem
+from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.services.recommendation_engine import fetch_products_in_order
 
 
 def bought_together_product_ids(db: Session, product_id: UUID, limit: int = 8) -> list[UUID]:
-    orders_with = select(OrderItem.order_id).where(OrderItem.product_id == product_id)
+    orders_with = (
+        select(OrderItem.order_id)
+        .join(Order, OrderItem.order_id == Order.id)
+        .where(OrderItem.product_id == product_id, Order.status != "cancelled")
+    )
     cnt = func.count().label("cnt")
     stmt = (
         select(OrderItem.product_id, cnt)
+        .join(Order, OrderItem.order_id == Order.id)
         .where(OrderItem.order_id.in_(orders_with))
         .where(OrderItem.product_id != product_id)
+        .where(Order.status != "cancelled")
         .group_by(OrderItem.product_id)
         .order_by(cnt.desc())
         .limit(limit)

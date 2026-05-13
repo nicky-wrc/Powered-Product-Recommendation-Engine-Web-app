@@ -20,6 +20,7 @@ from app.models.order import Order
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
 from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout, load_checkout_pricing
+from app.services.order_notifications import try_send_order_confirmation
 from app.services.product_pricing import effective_unit_price
 from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
@@ -375,7 +376,10 @@ def sync_checkout_session(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "Payment recorded but order linkage failed; contact support.",
             ) from None
+        try_send_order_confirmation(db, o.id)
         return {"status": "ok", "order": order_public(o).model_dump(mode="json")}
+
+    try_send_order_confirmation(db, order.id)
 
     o = db.scalar(
         select(Order).where(Order.id == order.id).options(selectinload(Order.items)),
@@ -399,7 +403,7 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
         lo_disc, lo_pts = _stripe_loyalty_from_metadata(meta)
         gc_disc, gc_code = _stripe_gift_from_metadata(meta)
         recv_em, recv_msg = _gift_card_recipient_from_metadata(meta)
-        fulfill_checkout(
+        order = fulfill_checkout(
             db,
             user_id,
             lines,
@@ -417,7 +421,15 @@ def _finalize_from_stripe_session(session: stripe.checkout.Session, db: Session)
             stripe_gift_card_code=gc_code,
         )
         db.commit()
-    except (CheckoutError, IntegrityError, json.JSONDecodeError, ValueError, TypeError):
+        try_send_order_confirmation(db, order.id)
+    except CheckoutError:
+        db.rollback()
+    except IntegrityError:
+        db.rollback()
+        o = db.scalar(select(Order).where(Order.stripe_checkout_session_id == session.id))
+        if o is not None:
+            try_send_order_confirmation(db, o.id)
+    except (json.JSONDecodeError, ValueError, TypeError):
         db.rollback()
 
 

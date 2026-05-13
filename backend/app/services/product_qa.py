@@ -14,11 +14,13 @@ def _display_name(u: User | None) -> str:
 def product_qa_item_public(q: ProductQuestion, viewer_id: UUID | None) -> ProductQaItemPublic:
     ans_public = None
     if q.answer:
+        auth = q.answer.author
         ans_public = ProductQaAnswerPublic(
             id=q.answer.id,
             body=q.answer.body,
             author_name=_display_name(q.answer.author),
             created_at=q.answer.created_at,
+            is_official=bool(auth and auth.is_admin),
         )
     return ProductQaItemPublic(
         id=q.id,

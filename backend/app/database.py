@@ -179,6 +179,9 @@ def apply_runtime_schema_patches() -> None:
                 """
             ),
         )
+        conn.execute(
+            text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmation_email_sent_at TIMESTAMPTZ;"),
+        )
 
 
 class Base(DeclarativeBase):

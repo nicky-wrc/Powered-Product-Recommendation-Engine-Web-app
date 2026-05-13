@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ReorderOrderButton } from "@/components/ReorderOrderButton";
+import { OrderFulfillmentActions } from "@/components/OrderFulfillmentActions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fetchMyOrders, getToken, notifyProfileUpdated, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
 import { CART_CHANGED_EVENT } from "@/lib/cart";
@@ -139,8 +140,8 @@ export default function OrdersPage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 ring-1 ring-stone-900/[0.03] backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 md:p-8">
           <h1 className="text-3xl font-bold text-stone-900 dark:text-stone-50">Orders</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            Order history with filters (status, payment method, product name search, date range, total range). Each order stores{" "}
-            <code className="rounded bg-stone-100 px-1 text-xs dark:bg-zinc-900">payment_method</code> from checkout.
+            Order history with filters (status, payment method, product name search, date range, total range). New checkouts are
+            <span className="font-medium text-stone-800 dark:text-stone-200"> processing</span> until fulfilled; download a PDF invoice or cancel while still processing.
           </p>
         </div>
 
@@ -153,7 +154,7 @@ export default function OrdersPage() {
                 <input
                   value={fStatus}
                   onChange={(e) => setFStatus(e.target.value)}
-                  placeholder="e.g. completed"
+                  placeholder="e.g. processing, completed"
                   className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
                 />
               </label>
@@ -316,6 +317,12 @@ export default function OrdersPage() {
                     ) : null}
                   </p>
                 ) : null}
+                <OrderFulfillmentActions
+                  order={o}
+                  onOrderUpdated={(updated) =>
+                    setOrders((prev) => (prev ? prev.map((x) => (x.id === updated.id ? updated : x)) : prev))
+                  }
+                />
                 <ReorderOrderButton order={o} />
               </li>
             ))}

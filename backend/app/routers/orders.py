@@ -3,6 +3,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,6 +13,9 @@ from app.models.order import Order, OrderItem
 from app.models.user import User
 from app.schemas.orders import OrderCreate, OrderPublic, order_public
 from app.services.checkout_fulfillment import CheckoutError, fulfill_checkout
+from app.services.invoice_pdf import build_order_invoice_pdf
+from app.services.order_cancel import cancel_processing_order
+from app.services.order_notifications import try_send_order_confirmation
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -46,6 +50,8 @@ def create_order(
     except CheckoutError as e:
         db.rollback()
         raise HTTPException(e.status_code, e.detail) from e
+
+    try_send_order_confirmation(db, order.id)
 
     o = db.scalar(
         select(Order)
@@ -109,6 +115,52 @@ def list_my_orders(
     )
     rows = list(db.scalars(stmt).all())
     return [order_public(o) for o in rows]
+
+
+@router.get("/{order_id}/invoice")
+def download_order_invoice(
+    order_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    o = db.scalar(
+        select(Order)
+        .where(Order.id == order_id, Order.user_id == user.id)
+        .options(selectinload(Order.items)),
+    )
+    if o is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found")
+    if o.status == "cancelled":
+        raise HTTPException(status.HTTP_410_GONE, "Invoice not available for cancelled orders.")
+    pdf = build_order_invoice_pdf(o, customer_email=user.email)
+    filename = f"invoice-{str(order_id)[:8]}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{order_id}/cancel", response_model=OrderPublic)
+def cancel_my_order(
+    order_id: UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderPublic:
+    try:
+        cancel_processing_order(db, order_id, user.id)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    o = db.scalar(
+        select(Order)
+        .where(Order.id == order_id)
+        .options(selectinload(Order.items)),
+    )
+    if o is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Order update failed")
+    return order_public(o)
 
 
 @router.get("/{order_id}", response_model=OrderPublic)

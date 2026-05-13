@@ -31,6 +31,10 @@ class Order(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+    confirmation_email_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     user: Mapped["User"] = relationship("User", back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(

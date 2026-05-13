@@ -197,8 +197,15 @@ export function ProductQaSection({ productId }: Props) {
                     <span className="font-semibold text-teal-800 dark:text-teal-300">คำตอบจากร้าน: </span>
                     {row.answer.body}
                   </p>
-                  <p className="mt-1 text-xs text-stone-500">
-                    {row.answer.author_name} · {formatTs(row.answer.created_at)}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-500">
+                    <span>
+                      {row.answer.author_name} · {formatTs(row.answer.created_at)}
+                    </span>
+                    {row.answer.is_official ? (
+                      <span className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-900 dark:bg-teal-900/50 dark:text-teal-100">
+                        คำตอบทางการ
+                      </span>
+                    ) : null}
                   </p>
                 </div>
               ) : (

@@ -92,3 +92,7 @@ def lock_validate_and_discount(
 
 def increment_promo_use(promo: PromoCode) -> None:
     promo.uses_count = int(promo.uses_count or 0) + 1
+
+
+def decrement_promo_use(promo: PromoCode) -> None:
+    promo.uses_count = max(0, int(promo.uses_count or 0) - 1)

@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     loyalty_redeem_points_per_dollar: int = 100
     # Optional: Cloudflare Turnstile — when set, login/register require cf_turnstile_response in body.
     turnstile_secret_key: str | None = None
+    # Optional SMTP for order confirmation emails (all required except password for some relays).
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    order_email_from: str | None = None
+    # PDF invoice branding (optional logo: PNG/JPEG path on server, or files under uploads/logo/).
+    store_invoice_name: str = "NickyShopEngine"
+    invoice_logo_path: str | None = None
 
 
 settings = Settings()

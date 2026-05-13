@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -51,7 +52,19 @@ def _apply_filters(
     uncategorized: bool = False,
     min_price: float | None = None,
     max_price: float | None = None,
+    on_sale: bool = False,
 ):
+    if on_sale:
+        now = datetime.now(timezone.utc)
+        cond = (
+            Product.sale_price.isnot(None),
+            Product.sale_ends_at.isnot(None),
+            Product.sale_ends_at > now,
+            Product.sale_price < Product.price,
+        )
+        for c in cond:
+            stmt = stmt.where(c)
+            count_stmt = count_stmt.where(c)
     if uncategorized:
         cond = or_(Product.category.is_(None), Product.category == "")
         stmt = stmt.where(cond)
@@ -98,6 +111,7 @@ def list_products(
     ),
     min_price: float | None = Query(None, ge=0, description="Minimum unit price inclusive"),
     max_price: float | None = Query(None, ge=0, description="Maximum unit price inclusive"),
+    on_sale: bool = Query(False, description="Only products with an active flash sale"),
     db: Session = Depends(get_db),
 ) -> ProductListResponse:
     if min_price is not None and max_price is not None and min_price > max_price:
@@ -115,6 +129,7 @@ def list_products(
         uncategorized=uncategorized,
         min_price=min_price,
         max_price=max_price,
+        on_sale=on_sale,
     )
     total = int(db.scalar(count_stmt) or 0)
     if sort == "price_asc":
@@ -164,7 +179,7 @@ def _user_has_purchased_product(db: Session, user_id: UUID, product_id: UUID) ->
         .where(
             Order.user_id == user_id,
             OrderItem.product_id == product_id,
-            Order.status == "completed",
+            Order.status != "cancelled",
         )
         .limit(1)
     )

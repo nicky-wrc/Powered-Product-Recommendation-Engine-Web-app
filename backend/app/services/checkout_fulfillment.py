@@ -265,7 +265,7 @@ def fulfill_checkout(
 
     order = Order(
         user_id=user_id,
-        status="completed",
+        status="processing",
         total_amount=total,
         payment_method=payment_method,
         stripe_checkout_session_id=stripe_checkout_session_id,

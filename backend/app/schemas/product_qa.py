@@ -9,6 +9,7 @@ class ProductQaAnswerPublic(BaseModel):
     body: str
     author_name: str
     created_at: datetime
+    is_official: bool = False
 
 
 class ProductQaItemPublic(BaseModel):
