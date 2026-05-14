@@ -15,6 +15,7 @@ from app.models.product import Product
 from app.models.product_bundle import ProductBundle, ProductBundleItem
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.models.user_address import UserAddress
 from app.schemas.orders import OrderLineIn
 from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
@@ -24,6 +25,65 @@ from app.services.product_pricing import effective_unit_price, volume_tiered_uni
 from app.services.product_variants import product_ids_requiring_variant
 
 GIFT_WRAP_FEE = Decimal("4.99")
+
+
+def _clean_ship_str(s: str | None, max_len: int) -> str | None:
+    if s is None:
+        return None
+    t = str(s).strip()
+    if not t:
+        return None
+    return t[:max_len]
+
+
+def _resolve_shipping_snapshot(db: Session, user: User) -> dict[str, str | None]:
+    """Prefer default/newest saved address; else profile address lines."""
+    addr = db.scalars(
+        select(UserAddress)
+        .where(UserAddress.user_id == user.id)
+        .order_by(UserAddress.is_default.desc(), UserAddress.created_at.desc())
+        .limit(1),
+    ).first()
+    if addr is not None and (addr.address_line1 or "").strip():
+        rn = (addr.recipient_name or "").strip() or (user.name or "").strip() or "Customer"
+        ph = (addr.phone or "").strip() or (user.phone or "").strip()
+        return {
+            "ship_label": _clean_ship_str(addr.label, 64),
+            "ship_recipient_name": _clean_ship_str(rn, 255),
+            "ship_phone": _clean_ship_str(ph, 64) if ph else None,
+            "ship_address_line1": (addr.address_line1 or "").strip()[:255],
+            "ship_address_line2": _clean_ship_str(addr.address_line2, 255),
+            "ship_city": _clean_ship_str(addr.city, 128),
+            "ship_province": _clean_ship_str(addr.province, 128),
+            "ship_postal_code": _clean_ship_str(addr.postal_code, 32),
+            "ship_country": _clean_ship_str(addr.country, 128),
+        }
+
+    line1 = (user.address_line1 or "").strip()
+    if line1:
+        return {
+            "ship_label": None,
+            "ship_recipient_name": _clean_ship_str(user.name, 255) or "Customer",
+            "ship_phone": _clean_ship_str(user.phone, 64),
+            "ship_address_line1": line1[:255],
+            "ship_address_line2": _clean_ship_str(user.address_line2, 255),
+            "ship_city": _clean_ship_str(user.city, 128),
+            "ship_province": _clean_ship_str(user.province, 128),
+            "ship_postal_code": _clean_ship_str(user.postal_code, 32),
+            "ship_country": _clean_ship_str(user.country, 128),
+        }
+
+    return {
+        "ship_label": None,
+        "ship_recipient_name": None,
+        "ship_phone": None,
+        "ship_address_line1": None,
+        "ship_address_line2": None,
+        "ship_city": None,
+        "ship_province": None,
+        "ship_postal_code": None,
+        "ship_country": None,
+    }
 
 
 def _norm_install_note(raw: str | None) -> str | None:
@@ -496,6 +556,13 @@ def fulfill_checkout(
     if total < 0:
         total = Decimal("0")
 
+    ship_snap = _resolve_shipping_snapshot(db, user_row)
+    if not (ship_snap.get("ship_address_line1") or "").strip():
+        raise CheckoutError(
+            400,
+            "กรุณาเพิ่มที่อยู่จัดส่งในสมุดที่อยู่ หรือบรรทัดที่อยู่ในโปรไฟล์ ก่อนชำระเงิน",
+        )
+
     order = Order(
         user_id=user_id,
         status="processing",
@@ -511,6 +578,7 @@ def fulfill_checkout(
         loyalty_points_earned=earned if earned > 0 else None,
         gift_card_code=gift_card_snap,
         gift_card_discount=gift_card_discount if gift_card_discount > 0 else None,
+        **ship_snap,
     )
     db.add(order)
     db.flush()

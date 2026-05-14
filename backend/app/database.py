@@ -210,6 +210,15 @@ def apply_runtime_schema_patches() -> None:
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(120);"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_label VARCHAR(64);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_recipient_name VARCHAR(255);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_phone VARCHAR(64);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_address_line1 VARCHAR(255);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_address_line2 VARCHAR(255);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_city VARCHAR(128);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_province VARCHAR(128);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_postal_code VARCHAR(32);"))
+        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS ship_country VARCHAR(128);"))
         conn.execute(
             text(
                 """

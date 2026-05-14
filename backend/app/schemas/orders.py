@@ -119,6 +119,15 @@ class OrderPublic(BaseModel):
     tracking_steps: list[OrderTrackingStepPublic] = Field(default_factory=list)
     created_at: datetime
     items: list[OrderItemPublic]
+    ship_label: str | None = None
+    ship_recipient_name: str | None = None
+    ship_phone: str | None = None
+    ship_address_line1: str | None = None
+    ship_address_line2: str | None = None
+    ship_city: str | None = None
+    ship_province: str | None = None
+    ship_postal_code: str | None = None
+    ship_country: str | None = None
 
 
 def order_public(o: Order) -> OrderPublic:
@@ -146,6 +155,15 @@ def order_public(o: Order) -> OrderPublic:
         delivered_at=getattr(o, "delivered_at", None),
         tracking_steps=order_tracking_steps(o),
         created_at=o.created_at,
+        ship_label=getattr(o, "ship_label", None),
+        ship_recipient_name=getattr(o, "ship_recipient_name", None),
+        ship_phone=getattr(o, "ship_phone", None),
+        ship_address_line1=getattr(o, "ship_address_line1", None),
+        ship_address_line2=getattr(o, "ship_address_line2", None),
+        ship_city=getattr(o, "ship_city", None),
+        ship_province=getattr(o, "ship_province", None),
+        ship_postal_code=getattr(o, "ship_postal_code", None),
+        ship_country=getattr(o, "ship_country", None),
         items=[
             OrderItemPublic(
                 product_id=row.product_id,

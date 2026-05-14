@@ -1,4 +1,5 @@
 import type { Product } from "@/lib/api";
+import { tabPublish } from "@/lib/tabCrossSync";
 
 const STORAGE_KEY = "recengine_wishlist_v1";
 const MAX_ITEMS = 200;
@@ -26,6 +27,7 @@ export type WishlistItem = {
 function notify() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(WISHLIST_CHANGED_EVENT));
+  tabPublish.wishlist();
 }
 
 function toItem(

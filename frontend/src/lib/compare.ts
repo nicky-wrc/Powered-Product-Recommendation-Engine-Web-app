@@ -1,4 +1,5 @@
 import type { Product } from "@/lib/api";
+import { tabPublish } from "@/lib/tabCrossSync";
 
 const STORAGE_KEY = "recengine_compare_v1";
 const MAX_ITEMS = 4;
@@ -23,6 +24,7 @@ export type CompareItem = Pick<
 function notify() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(COMPARE_CHANGED_EVENT));
+  tabPublish.compare();
 }
 
 function toItem(p: CompareItem): CompareItem {

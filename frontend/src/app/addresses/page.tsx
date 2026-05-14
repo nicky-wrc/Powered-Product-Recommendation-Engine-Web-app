@@ -18,6 +18,7 @@ import {
   type UserAddress,
 } from "@/lib/api";
 import { THAI_PROVINCES, THAI_PROVINCE_DATALIST_ID } from "@/lib/thaiProvinces";
+import { safeInternalNextPath } from "@/lib/shippingAddress";
 
 function emptyForm() {
   return {
@@ -46,6 +47,8 @@ export default function AddressesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
+  const [returnAfter, setReturnAfter] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     const t = getToken();
     if (!t) return;
@@ -59,16 +62,24 @@ export default function AddressesPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const n = safeInternalNextPath(new URLSearchParams(window.location.search).get("next"));
+    startTransition(() => setReturnAfter(n));
+  }, []);
+
+  useEffect(() => {
     const t = getToken();
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const addressesPath = "/addresses" + search;
     if (!t) {
       startTransition(() => {
         setLoading(false);
-        router.replace("/login?next=/addresses");
+        router.replace("/login?next=" + encodeURIComponent(addressesPath));
       });
       return;
     }
     startTransition(() => {
-      void load().catch(() => router.replace("/login?next=/addresses"));
+      void load().catch(() => router.replace("/login?next=" + encodeURIComponent(addressesPath)));
     });
   }, [load, router]);
 
@@ -223,8 +234,24 @@ export default function AddressesPage() {
         <div className="rounded-3xl border border-stone-200/90 bg-white/70 p-6 dark:border-zinc-800 dark:bg-zinc-950/70">
           <h1 className="text-2xl font-bold text-stone-900 dark:text-stone-50">สมุดที่อยู่</h1>
           <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">
-            เก็บหลายที่อยู่และเลือก<strong>ที่อยู่หลัก</strong>สำหรับจัดส่ง (เชื่อมกับออเดอร์ในเวอร์ชันถัดไปได้)
+            เก็บหลายที่อยู่และเลือก<strong>ที่อยู่หลัก</strong>สำหรับจัดส่ง — ต้องมีอย่างน้อยหนึ่งที่อยู่ก่อนสั่งซื้อจากตะกร้า
           </p>
+          {returnAfter ? (
+            <div className="mt-4 rounded-xl border border-teal-200/90 bg-teal-50/80 px-4 py-3 text-sm text-teal-950 dark:border-teal-800/60 dark:bg-teal-950/30 dark:text-teal-100">
+              <p className="font-medium">คุณมาจากขั้นตอนชำระเงิน</p>
+              <p className="mt-1 text-teal-900/90 dark:text-teal-200/90">
+                กรอกหรือเลือกที่อยู่จัดส่งแล้วกดกลับไปตะกร้าเพื่อสั่งซื้อต่อ
+              </p>
+              <p className="mt-3">
+                <Link
+                  href={returnAfter}
+                  className="inline-flex rounded-lg bg-teal-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-600 dark:bg-teal-600 dark:hover:bg-teal-500"
+                >
+                  กลับไปตะกร้า
+                </Link>
+              </p>
+            </div>
+          ) : null}
           <p className="mt-3 text-sm">
             <Link href="/profile" className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">
               ← โปรไฟล์

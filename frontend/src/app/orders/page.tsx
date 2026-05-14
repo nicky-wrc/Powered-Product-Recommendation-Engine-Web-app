@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ReorderOrderButton } from "@/components/ReorderOrderButton";
 import { OrderFulfillmentActions } from "@/components/OrderFulfillmentActions";
 import { OrderTrackingTimeline } from "@/components/OrderTrackingTimeline";
 import { SiteHeader } from "@/components/SiteHeader";
 import { fetchMyOrders, getToken, notifyProfileUpdated, syncStripeCheckoutSession, type OrderHistoryFilters, type OrderPublic } from "@/lib/api";
-import { CART_CHANGED_EVENT } from "@/lib/cart";
+import { emitCartChanged } from "@/lib/cart";
+import { formatOrderShippingLines, hasOrderShippingSnapshot } from "@/lib/orderShippingDisplay";
+import { usePollWhileVisible } from "@/lib/usePollWhileVisible";
 
 const DEFAULT_QUERY: OrderHistoryFilters = { limit: 100 };
 
@@ -54,7 +56,10 @@ export default function OrdersPage() {
   const [fMin, setFMin] = useState("");
   const [fMax, setFMax] = useState("");
 
+  const lastQueryRef = useRef<OrderHistoryFilters>(DEFAULT_QUERY);
+
   const fetchWithFilters = useCallback(async (token: string, filters: OrderHistoryFilters) => {
+    lastQueryRef.current = filters;
     if (filters.min_total != null && filters.max_total != null && filters.min_total > filters.max_total) {
       setErr("Min total cannot be greater than max total.");
       return;
@@ -89,7 +94,7 @@ export default function OrdersPage() {
       if (payment === "stripe" && sessionId) {
         try {
           await syncStripeCheckoutSession(t, sessionId);
-          window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+          emitCartChanged();
           notifyProfileUpdated();
           window.history.replaceState({}, "", "/orders");
         } catch (e) {
@@ -105,8 +110,18 @@ export default function OrdersPage() {
   useEffect(() => {
     const t = getToken();
     if (!t || !sessionReady) return;
-    void fetchWithFilters(t, DEFAULT_QUERY);
+    void fetchWithFilters(t, lastQueryRef.current);
   }, [sessionReady, fetchWithFilters]);
+
+  usePollWhileVisible(
+    () => {
+      const t = getToken();
+      if (!t || !sessionReady) return;
+      void fetchWithFilters(t, lastQueryRef.current);
+    },
+    18_000,
+    loggedIn && sessionReady,
+  );
 
   function applyFilters() {
     const t = getToken();
@@ -296,6 +311,12 @@ export default function OrdersPage() {
                     </li>
                   ))}
                 </ul>
+                {hasOrderShippingSnapshot(o) ? (
+                  <div className="mt-4 rounded-lg border border-stone-200/90 bg-stone-50/80 px-3 py-2.5 text-xs text-stone-800 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-stone-200">
+                    <p className="font-semibold text-stone-700 dark:text-stone-300">ที่อยู่จัดส่ง (ตามตอนสั่งซื้อ)</p>
+                    <p className="mt-1.5 whitespace-pre-line leading-relaxed">{formatOrderShippingLines(o).join("\n")}</p>
+                  </div>
+                ) : null}
                 <OrderTrackingTimeline order={o} />
                 {o.promo_code && (o.promo_discount ?? 0) > 0 ? (
                   <p className="mt-3 text-sm text-teal-800 dark:text-teal-200">

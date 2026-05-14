@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 
 import type { User } from "@/lib/api";
 import { API_BASE, fetchCart, getToken, isLocalUploadImageUrl, PROFILE_UPDATED_EVENT, setToken } from "@/lib/api";
-import { CART_CHANGED_EVENT, cartItemCount } from "@/lib/cart";
+import { CART_CHANGED_EVENT, emitCartChanged, cartItemCount } from "@/lib/cart";
 import { dumpServerCartToLocal } from "@/lib/cartSync";
 import { compareCount, COMPARE_CHANGED_EVENT } from "@/lib/compare";
 import { WISHLIST_CHANGED_EVENT, wishlistCount } from "@/lib/wishlist";
@@ -189,7 +189,7 @@ export function SiteHeader() {
     setToken(null);
     setUser(null);
     closeAll();
-    queueMicrotask(() => window.dispatchEvent(new Event(CART_CHANGED_EVENT)));
+    queueMicrotask(() => emitCartChanged());
     router.push("/");
     router.refresh();
   }

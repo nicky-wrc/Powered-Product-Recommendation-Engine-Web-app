@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, startTransition } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import { FreeShippingProgress } from "@/components/FreeShippingProgress";
@@ -29,7 +29,9 @@ import {
   isLocalUploadImageUrl,
   productImageUrl,
 } from "@/lib/api";
-import { addOrMergeLine, CART_CHANGED_EVENT, cartSubtotal, clearCart, getCart, removeLine, updateLineQty } from "@/lib/cart";
+import { addOrMergeLine, CART_CHANGED_EVENT, cartSubtotal, clearCart, emitCartChanged, getCart, removeLine, updateLineQty } from "@/lib/cart";
+import { userHasShippingAddress } from "@/lib/shippingAddress";
+import { usePollWhileVisible } from "@/lib/usePollWhileVisible";
 import {
   addToSavedForLater,
   getSavedForLater,
@@ -108,57 +110,36 @@ export default function CartPage() {
     return () => window.removeEventListener(SAVED_FOR_LATER_CHANGED_EVENT, sync);
   }, []);
 
-  useEffect(() => {
-    const sync = () => {
-      void (async () => {
-        const t = getToken();
-        if (t) {
-          try {
-            const c = await fetchCart(t);
-            setServerMerchSubtotal(typeof c.merchandise_subtotal === "number" ? c.merchandise_subtotal : null);
-            const flagged = c.items.filter((i) => productNeedsComplianceNotice(i.product)).length;
-            setComplianceCartHint(
-              flagged > 0
-                ? `ตะกร้ามีสินค้าที่มีข้อจำกัดด้านความปลอดภัยหรืออายุ (${flagged} รายการ) — เปิดหน้าสินค้าเพื่ออ่านรายละเอียดก่อนชำระเงิน`
-                : null,
-            );
-            setLines(
-              c.items.map((i) => ({
-                product_id: i.product.id,
-                variant_id: i.variant_id ?? null,
-                bundle_group_id: i.bundle_group_id ?? null,
-                bundle_id: i.bundle_id ?? null,
-                bundle_name: i.bundle_name ?? null,
-                name: i.variant_label ? `${i.product.name} — ${i.variant_label}` : i.product.name,
-                price: i.unit_price,
-                image_url: i.product.image_url,
-                qty: i.quantity,
-                with_installation: i.with_installation,
-                installation_slot_note: i.installation_slot_note ?? null,
-                installation_unit_fee: i.installation_unit_fee ?? null,
-              })),
-            );
-          } catch {
-            setServerMerchSubtotal(null);
-            setComplianceCartHint(null);
-            setLines(
-              getCart().map((l) => ({
-                product_id: l.product_id,
-                variant_id: l.variant_id ?? null,
-                bundle_group_id: null,
-                bundle_id: null,
-                bundle_name: null,
-                name: l.name,
-                price: l.price,
-                image_url: l.image_url,
-                qty: l.qty,
-                with_installation: l.with_installation,
-                installation_slot_note: l.installation_slot_note ?? null,
-                installation_unit_fee: l.installation_unit_fee ?? null,
-              })),
-            );
-          }
-        } else {
+  const syncCartFromSources = useCallback(() => {
+    void (async () => {
+      const t = getToken();
+      if (t) {
+        try {
+          const c = await fetchCart(t);
+          setServerMerchSubtotal(typeof c.merchandise_subtotal === "number" ? c.merchandise_subtotal : null);
+          const flagged = c.items.filter((i) => productNeedsComplianceNotice(i.product)).length;
+          setComplianceCartHint(
+            flagged > 0
+              ? `ตะกร้ามีสินค้าที่มีข้อจำกัดด้านความปลอดภัยหรืออายุ (${flagged} รายการ) — เปิดหน้าสินค้าเพื่ออ่านรายละเอียดก่อนชำระเงิน`
+              : null,
+          );
+          setLines(
+            c.items.map((i) => ({
+              product_id: i.product.id,
+              variant_id: i.variant_id ?? null,
+              bundle_group_id: i.bundle_group_id ?? null,
+              bundle_id: i.bundle_id ?? null,
+              bundle_name: i.bundle_name ?? null,
+              name: i.variant_label ? `${i.product.name} — ${i.variant_label}` : i.product.name,
+              price: i.unit_price,
+              image_url: i.product.image_url,
+              qty: i.quantity,
+              with_installation: i.with_installation,
+              installation_slot_note: i.installation_slot_note ?? null,
+              installation_unit_fee: i.installation_unit_fee ?? null,
+            })),
+          );
+        } catch {
           setServerMerchSubtotal(null);
           setComplianceCartHint(null);
           setLines(
@@ -178,12 +159,44 @@ export default function CartPage() {
             })),
           );
         }
-      })();
-    };
-    queueMicrotask(sync);
-    window.addEventListener(CART_CHANGED_EVENT, sync);
-    return () => window.removeEventListener(CART_CHANGED_EVENT, sync);
+      } else {
+        setServerMerchSubtotal(null);
+        setComplianceCartHint(null);
+        setLines(
+          getCart().map((l) => ({
+            product_id: l.product_id,
+            variant_id: l.variant_id ?? null,
+            bundle_group_id: null,
+            bundle_id: null,
+            bundle_name: null,
+            name: l.name,
+            price: l.price,
+            image_url: l.image_url,
+            qty: l.qty,
+            with_installation: l.with_installation,
+            installation_slot_note: l.installation_slot_note ?? null,
+            installation_unit_fee: l.installation_unit_fee ?? null,
+          })),
+        );
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    queueMicrotask(syncCartFromSources);
+    window.addEventListener(CART_CHANGED_EVENT, syncCartFromSources);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "recengine_cart" && e.key != null) return;
+      syncCartFromSources();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(CART_CHANGED_EVENT, syncCartFromSources);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [syncCartFromSources]);
+
+  usePollWhileVisible(syncCartFromSources, 14_000, true);
 
   const linesSig = lines
     .map(
@@ -240,7 +253,7 @@ export default function CartPage() {
         if (next < 1) removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
         else updateLineQty(line.product_id, next, line.variant_id ?? null, !!line.with_installation);
       }
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Update failed");
     }
@@ -260,7 +273,7 @@ export default function CartPage() {
     try {
       if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
       else removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Remove failed");
     }
@@ -294,7 +307,7 @@ export default function CartPage() {
       });
       if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
       else removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save for later");
     }
@@ -327,7 +340,7 @@ export default function CartPage() {
         });
       }
       removeSavedForLater(row.product_id, row.variant_id ?? null, !!row.with_installation);
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not move to cart");
     }
@@ -463,6 +476,17 @@ export default function CartPage() {
       return;
     }
     if (lines.length === 0) return;
+    if (!(await userHasShippingAddress(token))) {
+      const go = await confirm({
+        title: "ต้องมีที่อยู่จัดส่ง",
+        message:
+          "ยังไม่มีที่อยู่จัดส่งในระบบ (สมุดที่อยู่ หรือที่อยู่ในโปรไฟล์)\n\nกรุณากรอกก่อนสั่งซื้อ แล้วกลับมาที่ตะกร้าเพื่อชำระเงิน",
+        confirmLabel: "ไปกรอกที่อยู่",
+        cancelLabel: "ยกเลิก",
+      });
+      if (go) router.push("/addresses?next=" + encodeURIComponent("/cart"));
+      return;
+    }
     const GIFT_WRAP_FEE = 4.99;
     const merchandiseSubtotal = serverMerchSubtotal ?? cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
@@ -497,7 +521,7 @@ export default function CartPage() {
         },
       );
       clearCart();
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
       notifyProfileUpdated();
       setLines([]);
       router.push("/orders");
@@ -516,6 +540,17 @@ export default function CartPage() {
       return;
     }
     if (lines.length === 0) return;
+    if (!(await userHasShippingAddress(token))) {
+      const go = await confirm({
+        title: "ต้องมีที่อยู่จัดส่ง",
+        message:
+          "ยังไม่มีที่อยู่จัดส่งในระบบ (สมุดที่อยู่ หรือที่อยู่ในโปรไฟล์)\n\nกรุณากรอกก่อนชำระด้วย Stripe แล้วกลับมาที่ตะกร้า",
+        confirmLabel: "ไปกรอกที่อยู่",
+        cancelLabel: "ยกเลิก",
+      });
+      if (go) router.push("/addresses?next=" + encodeURIComponent("/cart"));
+      return;
+    }
     const GIFT_WRAP_FEE = 4.99;
     const merchandiseSubtotal = serverMerchSubtotal ?? cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
@@ -973,6 +1008,16 @@ export default function CartPage() {
                         {busy ? "Placing order…" : "Place order (no online payment)"}
                       </button>
                     </div>
+                    <p className="text-right text-xs text-stone-500 dark:text-stone-400">
+                      <Link
+                        href="/addresses?next=/cart"
+                        className="font-medium text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+                      >
+                        สมุดที่อยู่จัดส่ง
+                      </Link>
+                      <span className="mx-1">·</span>
+                      ต้องมีก่อนสั่งซื้อหรือชำระ Stripe
+                    </p>
                     {expressStripePrefill && stripeAvailable ? (
                       <p className="text-xs font-medium text-teal-800 dark:text-teal-300">
                         Express checkout on — Stripe will prefill your account email (manage in Profile).

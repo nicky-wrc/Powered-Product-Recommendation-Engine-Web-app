@@ -1346,6 +1346,15 @@ export type OrderPublic = {
   delivered_at?: string | null;
   tracking_steps?: OrderTrackingStep[];
   created_at: string;
+  ship_label?: string | null;
+  ship_recipient_name?: string | null;
+  ship_phone?: string | null;
+  ship_address_line1?: string | null;
+  ship_address_line2?: string | null;
+  ship_city?: string | null;
+  ship_province?: string | null;
+  ship_postal_code?: string | null;
+  ship_country?: string | null;
   items: {
     product_id: string;
     product_name: string;

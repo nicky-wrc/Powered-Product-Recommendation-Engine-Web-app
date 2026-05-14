@@ -40,6 +40,17 @@ class Order(Base):
     shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Snapshot at checkout (for fulfillment / admin; not updated if user edits profile later)
+    ship_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ship_recipient_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ship_phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ship_address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ship_address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ship_city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    ship_province: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    ship_postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ship_country: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
     user: Mapped["User"] = relationship("User", back_populates="orders")
     items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem",

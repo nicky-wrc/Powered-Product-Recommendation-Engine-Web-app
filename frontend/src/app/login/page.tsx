@@ -6,7 +6,7 @@ import { Suspense, useState } from "react";
 
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { SiteHeader } from "@/components/SiteHeader";
-import { CART_CHANGED_EVENT } from "@/lib/cart";
+import { emitCartChanged } from "@/lib/cart";
 import { flushLocalCartToServer } from "@/lib/cartSync";
 import { API_BASE, formatNetworkError, readApiErrorMessage, setToken } from "@/lib/api";
 
@@ -50,7 +50,7 @@ function LoginForm() {
       } catch {
         /* guest cart merge best-effort */
       }
-      window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+      emitCartChanged();
       const next = search.get("next");
       const safe = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
       router.push(safe);

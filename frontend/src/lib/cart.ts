@@ -1,7 +1,15 @@
 import type { Product } from "@/lib/api";
+import { tabPublish } from "@/lib/tabCrossSync";
 
 const CART_KEY = "recengine_cart";
 export const CART_CHANGED_EVENT = "recengine-cart";
+
+/** Dispatch cart refresh in this tab + notify other tabs (BroadcastChannel). */
+export function emitCartChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+  tabPublish.cart();
+}
 
 export type CartLine = {
   product_id: string;
@@ -19,11 +27,6 @@ export type CartLine = {
 
 function lineKey(productId: string, variantId: string | null | undefined, withInstallation?: boolean): string {
   return `${productId}::${variantId ?? ""}::${withInstallation ? "1" : "0"}`;
-}
-
-function notifyCartChanged() {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
 }
 
 export function getCart(): CartLine[] {
@@ -50,13 +53,13 @@ export function getCart(): CartLine[] {
 export function setCart(lines: CartLine[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CART_KEY, JSON.stringify(lines));
-  notifyCartChanged();
+  emitCartChanged();
 }
 
 export function clearCart() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(CART_KEY);
-  notifyCartChanged();
+  emitCartChanged();
 }
 
 /** Total number of items (sum of quantities). */

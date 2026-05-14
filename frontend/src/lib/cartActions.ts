@@ -1,6 +1,6 @@
 import { postCartItem } from "@/lib/api";
 import type { Product } from "@/lib/api";
-import { addOrMergeLine, CART_CHANGED_EVENT } from "@/lib/cart";
+import { addOrMergeLine, emitCartChanged } from "@/lib/cart";
 
 export async function addProductToCart(
   token: string | null,
@@ -20,7 +20,7 @@ export async function addProductToCart(
       with_installation: !!opts?.withInstallation,
       installation_slot_note: opts?.installationSlotNote?.trim() || null,
     });
-    window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+    emitCartChanged();
     return;
   }
   addOrMergeLine(product, q, opts);
