@@ -362,7 +362,7 @@ export default function ManageGiftRegistriesPage() {
     return (
       <div className="min-h-screen">
         <SiteHeader />
-        <main className="mx-auto max-w-3xl px-4 py-10">
+        <main className="mx-auto max-w-3xl px-3 py-6 sm:px-4 sm:py-10">
           <p className="text-sm text-stone-500">กำลังโหลด…</p>
         </main>
       </div>
@@ -372,10 +372,12 @@ export default function ManageGiftRegistriesPage() {
   return (
     <div className="min-h-screen">
       <SiteHeader />
-      <main className="mx-auto max-w-3xl space-y-8 px-4 py-10">
+      <main className="mx-auto max-w-3xl space-y-6 px-3 py-6 sm:space-y-8 sm:px-4 sm:py-10">
         <div>
-          <h1 className="text-2xl font-bold text-stone-900 dark:text-stone-50">รายการของขวัญ (Gift registry)</h1>
-          <p className="mt-1 text-sm text-stone-600 dark:text-stone-400">
+          <h1 className="text-xl font-bold leading-snug text-stone-900 sm:text-2xl dark:text-stone-50">
+            รายการของขวัญ (Gift registry)
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-400">
             สร้างลิสต์ แชร์ลิงก์ให้เพื่อนซื้อตามรายการ — ค้นหาสินค้าชื่อสินค้า หรือกรอก UUID เองถ้าต้องการ
           </p>
           <p className="mt-2 text-sm">
@@ -391,7 +393,7 @@ export default function ManageGiftRegistriesPage() {
           </div>
         ) : null}
 
-        <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
+        <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-4 sm:p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
           <h2 className="text-base font-semibold text-stone-900 dark:text-stone-50">สร้างลิสต์ใหม่</h2>
           <form onSubmit={(e) => void onCreate(e)} className="mt-3 space-y-3">
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
@@ -424,14 +426,14 @@ export default function ManageGiftRegistriesPage() {
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 disabled:opacity-50 dark:bg-teal-600 dark:hover:bg-teal-500"
+              className="min-h-11 w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-600 disabled:opacity-50 sm:w-auto dark:bg-teal-600 dark:hover:bg-teal-500"
             >
               สร้าง
             </button>
           </form>
         </section>
 
-        <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
+        <section className="rounded-2xl border border-stone-200/90 bg-white/80 p-4 sm:p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
           <h2 className="text-base font-semibold text-stone-900 dark:text-stone-50">ลิสต์ของฉัน</h2>
           {list.length === 0 ? (
             <p className="mt-2 text-sm text-stone-600 dark:text-stone-400">ยังไม่มีลิสต์</p>
@@ -442,15 +444,19 @@ export default function ManageGiftRegistriesPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedId(r.id)}
-                    className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
+                    className={`w-full rounded-xl border px-3 py-3 text-left text-sm transition sm:px-4 ${
                       selectedId === r.id
                         ? "border-teal-500 bg-teal-50/80 dark:border-teal-600 dark:bg-teal-950/30"
-                        : "border-stone-200 hover:border-stone-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+                        : "border-stone-200 hover:border-stone-300 active:bg-stone-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:active:bg-zinc-900/50"
                     }`}
                   >
-                    <span className="font-semibold text-stone-900 dark:text-stone-50">{r.title}</span>
-                    <span className="ml-2 text-stone-500 tabular-nums dark:text-stone-400">
-                      · {r.item_count} รายการ · /gift-registry/{r.slug}
+                    <span className="block font-semibold text-stone-900 sm:inline dark:text-stone-50">{r.title}</span>
+                    <span className="mt-1 block text-[13px] text-stone-500 tabular-nums sm:mt-0 sm:ml-2 sm:inline dark:text-stone-400">
+                      {r.item_count} รายการ
+                      <span className="hidden sm:inline"> · </span>
+                      <span className="mt-0.5 block break-all font-mono text-[11px] sm:mt-0 sm:inline sm:text-[13px]">
+                        /gift-registry/{r.slug}
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -460,20 +466,20 @@ export default function ManageGiftRegistriesPage() {
         </section>
 
         {detail ? (
-          <section className="space-y-4 rounded-2xl border border-stone-200/90 bg-white/80 p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <section className="space-y-4 rounded-2xl border border-stone-200/90 bg-white/80 p-4 sm:p-5 dark:border-zinc-800 dark:bg-zinc-950/80">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <h2 className="text-base font-semibold text-stone-900 dark:text-stone-50">แก้ไขลิสต์</h2>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:justify-end">
                 <Link
                   href={`/gift-registry/${encodeURIComponent(detail.slug)}`}
-                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-50 dark:border-zinc-600 dark:text-stone-100 dark:hover:bg-zinc-900"
+                  className="flex min-h-11 items-center justify-center rounded-lg border border-stone-200 px-3 py-2 text-center text-xs font-semibold text-stone-800 hover:bg-stone-50 sm:min-h-0 sm:py-1.5 dark:border-zinc-600 dark:text-stone-100 dark:hover:bg-zinc-900"
                 >
                   เปิดหน้าแชร์
                 </Link>
                 <button
                   type="button"
                   onClick={() => void copyShareUrl()}
-                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-semibold text-stone-800 hover:bg-stone-50 dark:border-zinc-600 dark:text-stone-100 dark:hover:bg-zinc-900"
+                  className="min-h-11 rounded-lg border border-stone-200 px-3 py-2 text-xs font-semibold text-stone-800 hover:bg-stone-50 sm:min-h-0 sm:py-1.5 dark:border-zinc-600 dark:text-stone-100 dark:hover:bg-zinc-900"
                 >
                   Copy ลิงก์
                 </button>
@@ -481,7 +487,7 @@ export default function ManageGiftRegistriesPage() {
                   type="button"
                   onClick={() => void onDeleteRegistry()}
                   disabled={busy}
-                  className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                  className="min-h-11 rounded-lg border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-50 sm:min-h-0 sm:py-1.5 dark:border-rose-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
                 >
                   ลบลิสต์
                 </button>
@@ -518,7 +524,7 @@ export default function ManageGiftRegistriesPage() {
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-white"
+                className="min-h-11 w-full rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-800 disabled:opacity-50 sm:w-auto dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-white"
               >
                 บันทึกข้อมูลหัวลิสต์
               </button>
@@ -542,7 +548,7 @@ export default function ManageGiftRegistriesPage() {
                     <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">กำลังโหลด…</p>
                   ) : null}
                   {pickerResults.length > 0 ? (
-                    <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-auto rounded-xl border border-stone-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-950">
+                    <ul className="absolute z-20 mt-1 max-h-[min(18rem,50svh)] w-full min-w-0 overflow-auto overscroll-contain rounded-xl border border-stone-200 bg-white py-1 shadow-lg sm:max-h-72 dark:border-zinc-700 dark:bg-zinc-950">
                       {pickerResults.map((p) => {
                         const thumb = productImageUrl(p);
                         return (
@@ -550,7 +556,7 @@ export default function ManageGiftRegistriesPage() {
                             <button
                               type="button"
                               onClick={() => void pickProduct(p)}
-                              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-stone-100 dark:hover:bg-zinc-900"
+                              className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-stone-100 active:bg-stone-100 dark:hover:bg-zinc-900 dark:active:bg-zinc-800"
                             >
                               <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-stone-100 dark:bg-zinc-900">
                                 {thumb ? (
@@ -605,7 +611,7 @@ export default function ManageGiftRegistriesPage() {
                       value={addVariantId}
                       onChange={(e) => setAddVariantId(e.target.value)}
                       required
-                      className="mt-1 w-full max-w-md rounded-lg border border-stone-200 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                      className="mt-1 w-full min-w-0 rounded-lg border border-stone-200 px-3 py-2.5 text-sm sm:max-w-md dark:border-zinc-700 dark:bg-zinc-950"
                     >
                       <option value="">— เลือก —</option>
                       {(pickerProduct?.variants ?? []).map((v) => (
@@ -668,7 +674,7 @@ export default function ManageGiftRegistriesPage() {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-600 disabled:opacity-50 sm:col-span-2 dark:bg-teal-600 dark:hover:bg-teal-500"
+                  className="min-h-11 w-full rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-600 disabled:opacity-50 sm:col-span-2 dark:bg-teal-600 dark:hover:bg-teal-500"
                 >
                   เพิ่มสินค้าลงลิสต์
                 </button>
@@ -684,16 +690,16 @@ export default function ManageGiftRegistriesPage() {
                   {detail.items.map((it) => (
                     <li
                       key={it.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200/90 px-3 py-2 text-sm dark:border-zinc-800"
+                      className="flex flex-col gap-3 rounded-xl border border-stone-200/90 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:py-2 dark:border-zinc-800"
                     >
-                      <div>
+                      <div className="min-w-0">
                         <Link
                           href={`/products/${it.product_id}`}
                           className="font-medium text-teal-800 hover:underline dark:text-teal-300"
                         >
                           {it.product.name}
                         </Link>
-                        <span className="ml-2 text-stone-500 tabular-nums dark:text-stone-400">
+                        <span className="mt-1 block text-stone-500 tabular-nums sm:ml-2 sm:mt-0 sm:inline dark:text-stone-400">
                           ×{it.quantity_requested}
                           {it.variant_id
                             ? ` · ${giftRegistryItemVariantLabel(it) ?? `variant ${it.variant_id.slice(0, 8)}…`}`
@@ -705,7 +711,7 @@ export default function ManageGiftRegistriesPage() {
                         type="button"
                         disabled={busy}
                         onClick={() => void onRemoveItem(it.id)}
-                        className="text-xs font-semibold text-rose-700 hover:underline disabled:opacity-50 dark:text-rose-400"
+                        className="min-h-10 shrink-0 self-end text-xs font-semibold text-rose-700 hover:underline disabled:opacity-50 sm:self-center dark:text-rose-400"
                       >
                         ลบ
                       </button>
@@ -720,9 +726,11 @@ export default function ManageGiftRegistriesPage() {
       {copyToast ? (
         <div
           role="status"
-          className="fixed bottom-6 left-1/2 z-50 max-w-[min(90vw,24rem)] -translate-x-1/2 rounded-full border border-stone-200 bg-stone-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-lg dark:border-zinc-600 dark:bg-zinc-950"
+          className="fixed bottom-4 left-1/2 z-50 max-w-[calc(100vw-1.5rem)] -translate-x-1/2 px-3 sm:bottom-6 sm:max-w-[min(90vw,24rem)] sm:px-0"
         >
-          {copyToast}
+          <div className="rounded-full border border-stone-200 bg-stone-900 px-4 py-2.5 text-center text-sm font-medium text-white shadow-lg dark:border-zinc-600 dark:bg-zinc-950">
+            {copyToast}
+          </div>
         </div>
       ) : null}
     </div>
