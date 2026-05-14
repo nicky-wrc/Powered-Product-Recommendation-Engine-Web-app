@@ -43,6 +43,8 @@ export default function OrdersPage() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  /** Must not read localStorage during render — SSR and first client paint stay in sync. */
+  const [loggedIn, setLoggedIn] = useState(false);
 
   const [fStatus, setFStatus] = useState("");
   const [fPayment, setFPayment] = useState("");
@@ -72,6 +74,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const t = getToken();
+    setLoggedIn(!!t);
     if (!t) {
       queueMicrotask(() => {
         setOrders([]);
@@ -131,8 +134,6 @@ export default function OrdersPage() {
     !!fTo.trim() ||
     !!fMin.trim() ||
     !!fMax.trim();
-
-  const loggedIn = !!getToken();
 
   return (
     <div className="min-h-screen">

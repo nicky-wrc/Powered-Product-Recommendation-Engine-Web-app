@@ -120,6 +120,8 @@ class CheckoutSessionBody(BaseModel):
     gift_card_code: str | None = Field(default=None, max_length=40)
     gift_cards_recipient_email: str | None = Field(default=None, max_length=255)
     gift_cards_message: str | None = Field(default=None, max_length=2000)
+    # When true, require user.express_checkout_enabled and prefill Stripe Checkout email.
+    express_checkout: bool = False
 
 
 def _stripe_enabled() -> bool:
@@ -300,15 +302,25 @@ def create_checkout_session(
     base = settings.public_app_url.rstrip("/")
     stripe.api_key = settings.stripe_secret_key
 
+    session_kwargs: dict = {
+        "mode": "payment",
+        "line_items": line_items,
+        "success_url": f"{base}/orders?payment=stripe&session_id={{CHECKOUT_SESSION_ID}}",
+        "cancel_url": f"{base}/cart",
+        "client_reference_id": str(user.id),
+        "metadata": meta,
+    }
+    if body.express_checkout:
+        if not getattr(user, "express_checkout_enabled", False):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Express checkout is not enabled for this account; turn it on in Profile first.",
+            )
+        if user.email and user.email.strip():
+            session_kwargs["customer_email"] = user.email.strip()
+
     try:
-        session = stripe.checkout.Session.create(
-            mode="payment",
-            line_items=line_items,
-            success_url=f"{base}/orders?payment=stripe&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{base}/cart",
-            client_reference_id=str(user.id),
-            metadata=meta,
-        )
+        session = stripe.checkout.Session.create(**session_kwargs)
     except stripe.StripeError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Stripe error: {e!s}") from e
 

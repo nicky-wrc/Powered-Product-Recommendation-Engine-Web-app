@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import type { Product } from "@/lib/api";
 import { formatNetworkError, getToken, postPriceMatchReport } from "@/lib/api";
@@ -8,9 +8,22 @@ import { formatNetworkError, getToken, postPriceMatchReport } from "@/lib/api";
 type Props = { product: Product };
 
 export function ProductPriceMatchSection({ product }: Props) {
+  const panelId = useId();
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
   useEffect(() => {
     queueMicrotask(() => setSessionToken(getToken()));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      if (window.location.hash === "#price-match") setOpen(true);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, []);
 
   const priceStr = (
@@ -53,7 +66,7 @@ export function ProductPriceMatchSection({ product }: Props) {
         },
         t,
       );
-      setMsg("ส่งรายงานแล้ว — ทีมจะตรวจสอบตามนโยบาย price match");
+      setMsg("ส่งรายงานแล้ว — ทีมจะตรวจสอบตามนโยบายของร้าน");
       setReportedPrice("");
       setCompetitorUrl("");
       setNotes("");
@@ -65,84 +78,120 @@ export function ProductPriceMatchSection({ product }: Props) {
     }
   }
 
+  const inputClass =
+    "mt-1 w-full rounded-xl border border-stone-200/90 bg-white px-3 py-2 text-sm text-stone-900 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/15 dark:border-zinc-700 dark:bg-zinc-950 dark:text-stone-100 dark:placeholder:text-zinc-500";
+
   return (
     <section
-      aria-label="Price match report"
-      className="rounded-xl border border-stone-200/90 bg-white/80 px-4 py-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/50"
+      id="price-match"
+      aria-label="รายงานราคาถูกกว่า"
+      className="scroll-mt-24"
     >
-      <h2 className="text-sm font-semibold text-stone-900 dark:text-stone-100">พบราคาถูกกว่า?</h2>
-      <p className="mt-1 text-xs leading-snug text-stone-600 dark:text-stone-400">
-        แจ้งลิงก์และราคาที่เห็น (ราคาโชว์บนเว็บเราโดยประมาณ{" "}
-        <span className="tabular-nums font-medium text-stone-800 dark:text-stone-200">${priceStr}</span> — อาจแตกต่างตาม
-        variant) แอดมินจะพิจารณาตามนโยบายของร้าน
-      </p>
-      <form onSubmit={(e) => void onSubmit(e)} className="mt-3 space-y-3">
-        <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
-          ราคาที่พบ (USD)
-          <input
-            required
-            inputMode="decimal"
-            value={reportedPrice}
-            onChange={(e) => setReportedPrice(e.target.value)}
-            placeholder="เช่น 19.99"
-            className="mt-1 w-full max-w-[12rem] rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums dark:border-zinc-700 dark:bg-zinc-950"
-          />
-        </label>
-        <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
-          ลิงก์ร้านคู่แข่ง (ไม่บังคับ)
-          <input
-            type="url"
-            inputMode="url"
-            value={competitorUrl}
-            onChange={(e) => setCompetitorUrl(e.target.value)}
-            placeholder="https://…"
-            className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-          />
-        </label>
-        <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
-          หมายเหตุ (ไม่บังคับ)
-          <textarea
-            rows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="เช่น รวมค่าส่งแล้ว, โค้ดส่วนลด…"
-            className="mt-1 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-          />
-        </label>
-        {!sessionToken ? (
-          <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
-            อีเมลสำหรับติดต่อกลับ
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="mt-1 w-full max-w-md rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-            />
-          </label>
-        ) : (
-          <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
-            อีเมลเพิ่มเติม (ไม่บังคับ — เราเชื่อมบัญชีของคุณแล้ว)
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full max-w-md rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-            />
-          </label>
-        )}
-        {err ? <p className="text-sm text-rose-700 dark:text-rose-300">{err}</p> : null}
-        {msg ? <p className="text-sm text-emerald-800 dark:text-emerald-300">{msg}</p> : null}
+      <div className="rounded-2xl border border-stone-200/70 bg-stone-50/50 dark:border-zinc-800/80 dark:bg-zinc-950/40">
         <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-white"
+          type="button"
+          id={`${panelId}-trigger`}
+          aria-expanded={open}
+          aria-controls={`${panelId}-panel`}
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-stone-100/80 dark:hover:bg-zinc-900/50 sm:px-5"
         >
-          {busy ? "กำลังส่ง…" : "ส่งรายงานราคา"}
+          <span>
+            <span className="block text-sm font-semibold text-stone-900 dark:text-stone-100">พบราคาถูกกว่า?</span>
+            <span className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400">
+              เปิดเมื่อต้องการส่งลิงก์อ้างอิง · ราคาโชว์บนเว็บเราโดยประมาณ{" "}
+              <span className="tabular-nums font-medium text-stone-700 dark:text-stone-300">${priceStr}</span>
+            </span>
+          </span>
+          <span
+            className={`shrink-0 text-stone-400 transition dark:text-zinc-500 ${open ? "rotate-180" : ""}`}
+            aria-hidden
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+            </svg>
+          </span>
         </button>
-      </form>
+
+        {open ? (
+          <div
+            id={`${panelId}-panel`}
+            role="region"
+            aria-labelledby={`${panelId}-trigger`}
+            className="border-t border-stone-200/70 px-4 pb-4 pt-1 dark:border-zinc-800 sm:px-5"
+          >
+            <form onSubmit={(e) => void onSubmit(e)} className="mt-3 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+                  ราคาที่พบ (USD) <span className="text-rose-600 dark:text-rose-400">*</span>
+                  <input
+                    required
+                    inputMode="decimal"
+                    value={reportedPrice}
+                    onChange={(e) => setReportedPrice(e.target.value)}
+                    placeholder="เช่น 19.99"
+                    className={`${inputClass} tabular-nums sm:max-w-none`}
+                  />
+                </label>
+                <label className="block text-xs font-medium text-stone-600 dark:text-stone-400 sm:col-span-1">
+                  ลิงก์ร้านคู่แข่ง <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={competitorUrl}
+                    onChange={(e) => setCompetitorUrl(e.target.value)}
+                    placeholder="https://…"
+                    className={inputClass}
+                  />
+                </label>
+              </div>
+              <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+                หมายเหตุ <span className="font-normal text-stone-400">(ไม่บังคับ)</span>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="เช่น รวมค่าส่งแล้ว, มีโค้ดส่วนลด…"
+                  className={`${inputClass} resize-y min-h-[4rem]`}
+                />
+              </label>
+              {!sessionToken ? (
+                <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+                  อีเมลสำหรับติดต่อกลับ <span className="text-rose-600 dark:text-rose-400">*</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className={inputClass}
+                  />
+                </label>
+              ) : (
+                <label className="block text-xs font-medium text-stone-600 dark:text-stone-400">
+                  อีเมลเพิ่มเติม <span className="font-normal text-stone-400">(ไม่บังคับ — ใช้บัญชีที่ล็อกอินเป็นหลัก)</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+              )}
+              {err ? <p className="text-sm text-rose-700 dark:text-rose-300">{err}</p> : null}
+              {msg ? <p className="text-sm text-emerald-800 dark:text-emerald-300">{msg}</p> : null}
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-teal-600/20 transition hover:from-teal-500 hover:to-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
+              >
+                {busy ? "กำลังส่ง…" : "ส่งรายงานราคา"}
+              </button>
+            </form>
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

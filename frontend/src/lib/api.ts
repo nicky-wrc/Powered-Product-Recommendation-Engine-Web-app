@@ -139,6 +139,8 @@ export type User = {
   province?: string | null;
   postal_code?: string | null;
   country?: string | null;
+  /** Prefill Stripe Checkout with account email when paying from cart (opt-in in Profile). */
+  express_checkout_enabled?: boolean;
 };
 
 export type AuthResponse = {
@@ -177,6 +179,7 @@ export type ProfileUpdatePayload = {
   province?: string | null;
   postal_code?: string | null;
   country?: string | null;
+  express_checkout_enabled?: boolean;
 };
 
 export async function fetchMe(token: string): Promise<User> {
@@ -1348,6 +1351,8 @@ export type OrderCheckoutOptions = {
   gift_card_code?: string | null;
   gift_cards_recipient_email?: string | null;
   gift_cards_message?: string | null;
+  /** Ask backend to prefill Stripe email (requires express_checkout_enabled on the user). */
+  express_checkout?: boolean;
 };
 
 export type PromoPreviewResponse = {
@@ -1546,6 +1551,7 @@ export async function createStripeCheckoutSession(
     | "gift_card_code"
     | "gift_cards_recipient_email"
     | "gift_cards_message"
+    | "express_checkout"
   > = {},
 ): Promise<{ url: string }> {
   const {
@@ -1556,6 +1562,7 @@ export async function createStripeCheckoutSession(
     gift_card_code = null,
     gift_cards_recipient_email = null,
     gift_cards_message = null,
+    express_checkout = false,
   } = options;
   const r = await fetch(`${API_BASE}/api/payments/create-checkout-session`, {
     method: "POST",
@@ -1572,6 +1579,7 @@ export async function createStripeCheckoutSession(
       gift_card_code: gift_card_code?.trim() ? gift_card_code.trim() : null,
       gift_cards_recipient_email: gift_cards_recipient_email?.trim() ? gift_cards_recipient_email.trim() : null,
       gift_cards_message: gift_cards_message?.trim() ? gift_cards_message.trim() : null,
+      express_checkout: !!express_checkout,
     }),
   });
   if (!r.ok) throw new Error(await readApiErrorMessage(r));

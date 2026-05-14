@@ -211,7 +211,16 @@ export default async function ProductDetailPage({ params }: Props) {
             </div>
             <StockAlertCTA product={p} />
             <ProductVolumeTiersSection product={p} />
-            <ProductPriceMatchSection product={p} />
+            <p className="text-[11px] text-stone-500 dark:text-stone-500">
+              <a
+                href="#price-match"
+                className="font-medium text-teal-700 underline decoration-teal-700/30 underline-offset-2 transition hover:text-teal-800 hover:decoration-teal-700 dark:text-teal-400 dark:decoration-teal-400/30 dark:hover:text-teal-300"
+              >
+                พบราคาถูกกว่า?
+              </a>
+              <span className="text-stone-400 dark:text-stone-600"> · </span>
+              <span>แจ้งทีมได้จากส่วนล่างหน้า (ไม่บังคับ)</span>
+            </p>
             <div className="flex gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
@@ -271,6 +280,8 @@ export default async function ProductDetailPage({ params }: Props) {
         />
 
         <ProductPriceHistorySection history={priceHistory} currentPrice={p.price} />
+
+        <ProductPriceMatchSection product={p} />
 
         <ProductAPlusSection product={p} />
 

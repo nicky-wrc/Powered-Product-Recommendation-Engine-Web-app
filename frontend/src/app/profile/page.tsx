@@ -58,6 +58,8 @@ export default function ProfilePage() {
   const [pwBusy, setPwBusy] = useState(false);
   const [pwErr, setPwErr] = useState<string | null>(null);
   const [pwOk, setPwOk] = useState<string | null>(null);
+  const [expressBusy, setExpressBusy] = useState(false);
+  const [expressErr, setExpressErr] = useState<string | null>(null);
 
   function hydrateDraftFromUser(u: User) {
     setName(u.name);
@@ -246,6 +248,29 @@ export default function ProfilePage() {
     }
   }
 
+  async function setExpressCheckoutPref(enabled: boolean) {
+    const t = getToken();
+    if (!t || !user) return;
+    setExpressErr(null);
+    setOkMsg(null);
+    setExpressBusy(true);
+    try {
+      const u = await patchProfile(t, { express_checkout_enabled: enabled });
+      setUser(u);
+      hydrateDraftFromUser(u);
+      notifyProfileUpdated();
+      setOkMsg(
+        enabled
+          ? "เปิดชำระแบบด่วนแล้ว — เมื่อชำระด้วย Stripe ระบบจะส่งอีเมลบัญชีไปให้ Stripe เติมฟอร์มให้"
+          : "ปิดชำระแบบด่วนแล้ว",
+      );
+    } catch (e) {
+      setExpressErr(formatNetworkError(e));
+    } finally {
+      setExpressBusy(false);
+    }
+  }
+
   const avatarSrc = user?.avatar_url?.startsWith("/uploads/") ? user.avatar_url : user?.avatar_url ?? null;
 
   return (
@@ -341,6 +366,29 @@ export default function ProfilePage() {
                   ) : null}
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">
+              <h2 className="text-lg font-semibold text-stone-900 dark:text-stone-50">ชำระเงินแบบด่วน (Stripe)</h2>
+              <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                เปิดใช้เมื่อต้องการให้ Stripe Checkout กรอกอีเมลจากบัญชีนี้ให้อัตโนมัติ — ไม่เก็บข้อมูลบัตรที่เซิร์ฟเวอร์ของเรา
+              </p>
+              {expressErr ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{expressErr}</p> : null}
+              <label className="mt-4 flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-stone-300 text-teal-600 focus:ring-teal-500 dark:border-zinc-600"
+                  checked={!!user.express_checkout_enabled}
+                  disabled={expressBusy}
+                  onChange={(e) => void setExpressCheckoutPref(e.target.checked)}
+                />
+                <span className="text-sm text-stone-800 dark:text-stone-200">
+                  <span className="font-medium">ใช้โหมดชำระแบบด่วนกับ Stripe</span>
+                  <span className="mt-0.5 block text-xs text-stone-500 dark:text-stone-400">
+                    เก็บค่าตามอีเมลล็อกอินปัจจุบัน ({user.email})
+                  </span>
+                </span>
+              </label>
             </div>
 
             <div className="space-y-4 rounded-3xl border border-stone-200/90 bg-white/90 p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/90">

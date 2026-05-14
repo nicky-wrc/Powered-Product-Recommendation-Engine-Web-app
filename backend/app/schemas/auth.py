@@ -44,6 +44,7 @@ class UserPublic(BaseModel):
     province: str | None = None
     postal_code: str | None = None
     country: str | None = None
+    express_checkout_enabled: bool = False
 
 
 class ProfileUpdate(BaseModel):
@@ -56,6 +57,7 @@ class ProfileUpdate(BaseModel):
     province: str | None = Field(default=None, max_length=128)
     postal_code: str | None = Field(default=None, max_length=32)
     country: str | None = Field(default=None, max_length=128)
+    express_checkout_enabled: bool | None = None
 
     @field_validator("name", mode="before")
     @classmethod

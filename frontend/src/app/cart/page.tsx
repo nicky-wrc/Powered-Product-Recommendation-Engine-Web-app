@@ -14,6 +14,7 @@ import {
   createStripeCheckoutSession,
   deleteCartItem,
   fetchCart,
+  fetchMe,
   fetchPaymentStatus,
   formatNetworkError,
   getToken,
@@ -24,6 +25,7 @@ import {
   previewLoyalty,
   previewPromoCode,
   notifyProfileUpdated,
+  PROFILE_UPDATED_EVENT,
   isLocalUploadImageUrl,
   productImageUrl,
 } from "@/lib/api";
@@ -72,11 +74,28 @@ export default function CartPage() {
   const [giftRecipientMessage, setGiftRecipientMessage] = useState("");
   const [serverMerchSubtotal, setServerMerchSubtotal] = useState<number | null>(null);
   const [complianceCartHint, setComplianceCartHint] = useState<string | null>(null);
+  const [expressStripePrefill, setExpressStripePrefill] = useState(false);
 
   useEffect(() => {
     void fetchPaymentStatus()
       .then((s) => queueMicrotask(() => setStripeAvailable(s.stripe_checkout_available)))
       .catch(() => queueMicrotask(() => setStripeAvailable(false)));
+  }, []);
+
+  useEffect(() => {
+    const readExpress = () => {
+      const t = getToken();
+      if (!t) {
+        queueMicrotask(() => setExpressStripePrefill(false));
+        return;
+      }
+      void fetchMe(t)
+        .then((u) => queueMicrotask(() => setExpressStripePrefill(!!u.express_checkout_enabled)))
+        .catch(() => queueMicrotask(() => setExpressStripePrefill(false)));
+    };
+    readExpress();
+    window.addEventListener(PROFILE_UPDATED_EVENT, readExpress);
+    return () => window.removeEventListener(PROFILE_UPDATED_EVENT, readExpress);
   }, []);
 
   useEffect(() => {
@@ -475,6 +494,7 @@ export default function CartPage() {
           gift_card_code: appliedGc?.code ?? null,
           gift_cards_recipient_email: giftRecipientEmail.trim() ? giftRecipientEmail.trim() : null,
           gift_cards_message: giftRecipientMessage.trim() ? giftRecipientMessage.trim() : null,
+          express_checkout: expressStripePrefill,
         },
       );
       window.location.assign(url);
@@ -888,6 +908,11 @@ export default function CartPage() {
                         {busy ? "Placing order…" : "Place order (no online payment)"}
                       </button>
                     </div>
+                    {expressStripePrefill && stripeAvailable ? (
+                      <p className="text-xs font-medium text-teal-800 dark:text-teal-300">
+                        Express checkout on — Stripe will prefill your account email (manage in Profile).
+                      </p>
+                    ) : null}
                     <p className="text-xs text-stone-500 dark:text-stone-400">
                       Requires login · Stripe uses{" "}
                       <a

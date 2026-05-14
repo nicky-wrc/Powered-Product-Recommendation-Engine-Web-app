@@ -31,6 +31,7 @@ def _public(u: User) -> UserPublic:
         province=u.province,
         postal_code=u.postal_code,
         country=u.country,
+        express_checkout_enabled=bool(getattr(u, "express_checkout_enabled", False)),
     )
 
 
