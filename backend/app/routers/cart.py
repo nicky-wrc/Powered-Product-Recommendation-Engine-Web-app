@@ -1,6 +1,8 @@
 from collections import defaultdict
 from uuid import UUID, uuid4
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
@@ -15,7 +17,13 @@ from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemPatch, CartLineResponse, CartResponse
 from app.schemas.products import ProductPublic, product_public
-from app.services.checkout_fulfillment import CheckoutLineSpec, load_checkout_pricing
+from app.services.checkout_fulfillment import (
+    CheckoutError,
+    CheckoutLineSpec,
+    _installation_fee_and_label,
+    _norm_install_note,
+    load_checkout_pricing,
+)
 from app.services.product_pricing import effective_unit_price, volume_tiered_unit_price
 from app.services.product_variants import product_ids_requiring_variant, variant_aggregates_for_product_ids
 
@@ -28,6 +36,7 @@ def _find_cart_line(
     product_id: UUID,
     variant_id: UUID | None,
     bundle_group_id: UUID | None,
+    with_installation: bool | None = None,
 ) -> CartItem | None:
     stmt = select(CartItem).where(CartItem.user_id == user_id, CartItem.product_id == product_id)
     if variant_id is not None:
@@ -38,6 +47,8 @@ def _find_cart_line(
         stmt = stmt.where(CartItem.bundle_group_id == bundle_group_id)
     else:
         stmt = stmt.where(CartItem.bundle_group_id.is_(None))
+    if with_installation is not None:
+        stmt = stmt.where(CartItem.with_installation == with_installation)
     return db.scalar(stmt)
 
 
@@ -96,23 +107,44 @@ def _cart_response(db: Session, user_id: UUID) -> CartResponse:
         if ci.bundle_id:
             b = db.get(ProductBundle, ci.bundle_id)
             bname = b.name if b else None
+        fee_dec = Decimal("0")
+        inst_fee_f: float | None = None
+        if getattr(ci, "with_installation", False):
+            try:
+                fee_dec, _ = _installation_fee_and_label(p, True)
+                inst_fee_f = float(fee_dec)
+            except CheckoutError:
+                fee_dec = Decimal("0")
+                inst_fee_f = None
+        unit_with = float(Decimal(str(unit)) + fee_dec)
         items.append(
             CartLineResponse(
                 product=pub,
                 quantity=ci.quantity,
                 variant_id=ci.variant_id,
                 variant_label=v.label if v else None,
-                unit_price=unit,
+                unit_price=unit_with,
                 list_unit_price=list_u,
                 bundle_id=ci.bundle_id,
                 bundle_group_id=ci.bundle_group_id,
                 bundle_name=bname,
+                with_installation=bool(getattr(ci, "with_installation", False)),
+                installation_slot_note=getattr(ci, "installation_slot_note", None),
+                installation_unit_fee=inst_fee_f,
             ),
         )
         count += ci.quantity
 
     specs = [
-        CheckoutLineSpec(ci.product_id, ci.variant_id, ci.quantity, ci.bundle_group_id, ci.bundle_id)
+        CheckoutLineSpec(
+            ci.product_id,
+            ci.variant_id,
+            ci.quantity,
+            ci.bundle_group_id,
+            ci.bundle_id,
+            bool(getattr(ci, "with_installation", False)),
+            getattr(ci, "installation_slot_note", None),
+        )
         for ci, _p in rows
     ]
     merch_sub = 0.0
@@ -196,7 +228,7 @@ def add_bundle_to_cart(
             p = db.get(Product, it.product_id)
             assert p is not None
             qty = it.quantity
-            existing = _find_cart_line(db, user.id, it.product_id, it.variant_id, group_id)
+            existing = _find_cart_line(db, user.id, it.product_id, it.variant_id, group_id, None)
             if existing:
                 existing.quantity = min(99, existing.quantity + qty)
             else:
@@ -223,8 +255,13 @@ def add_cart_item(
     p = db.get(Product, body.product_id)
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
-    _validate_add(db, p, body.variant_id, body.quantity)
-    existing = _find_cart_line(db, user.id, body.product_id, body.variant_id, None)
+    if body.with_installation:
+        try:
+            _installation_fee_and_label(p, True)
+        except CheckoutError as e:
+            raise HTTPException(e.status_code, e.detail) from e
+    note = _norm_install_note(body.installation_slot_note) if body.with_installation else None
+    existing = _find_cart_line(db, user.id, body.product_id, body.variant_id, None, body.with_installation)
     if existing:
         if existing.bundle_group_id is not None:
             raise HTTPException(
@@ -239,6 +276,8 @@ def add_cart_item(
                 product_id=body.product_id,
                 variant_id=body.variant_id,
                 quantity=body.quantity,
+                with_installation=bool(body.with_installation),
+                installation_slot_note=note,
             ),
         )
     db.commit()
@@ -251,10 +290,11 @@ def patch_cart_item(
     body: CartItemPatch,
     variant_id: UUID | None = Query(None),
     bundle_group_id: UUID | None = Query(None),
+    with_installation: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CartResponse:
-    row = _find_cart_line(db, user.id, product_id, variant_id, bundle_group_id)
+    row = _find_cart_line(db, user.id, product_id, variant_id, bundle_group_id, with_installation)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cart line not found")
     row.quantity = body.quantity
@@ -267,10 +307,11 @@ def delete_cart_item(
     product_id: UUID,
     variant_id: UUID | None = Query(None),
     bundle_group_id: UUID | None = Query(None),
+    with_installation: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CartResponse:
-    row = _find_cart_line(db, user.id, product_id, variant_id, bundle_group_id)
+    row = _find_cart_line(db, user.id, product_id, variant_id, bundle_group_id, with_installation)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cart line not found")
     db.delete(row)

@@ -129,6 +129,17 @@ class ProductPublic(BaseModel):
     minimum_age: int | None = None
     compliance_note: str | None = None
     volume_tiers: list[VolumeTierPublic] | None = None
+    installation_service_label: str | None = None
+    installation_service_price: float | None = None
+
+
+def _installation_public_fields(p: Product) -> dict[str, object]:
+    fee = getattr(p, "installation_service_price", None)
+    raw_l = getattr(p, "installation_service_label", None)
+    lbl = (str(raw_l).strip() if raw_l else "") or ""
+    if fee is None or not lbl:
+        return {"installation_service_label": None, "installation_service_price": None}
+    return {"installation_service_label": lbl[:200], "installation_service_price": float(fee)}
 
 
 def _compliance_public_fields(p: Product) -> dict[str, object]:
@@ -215,6 +226,7 @@ def product_public(
             **_a_plus_public_fields(p),
             **_compliance_public_fields(p),
             **_volume_tiers_public_fields(p),
+            **_installation_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -243,6 +255,7 @@ def product_public(
             **_a_plus_public_fields(p),
             **_compliance_public_fields(p),
             **_volume_tiers_public_fields(p),
+            **_installation_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -271,6 +284,7 @@ def product_public(
         **_a_plus_public_fields(p),
         **_compliance_public_fields(p),
         **_volume_tiers_public_fields(p),
+        **_installation_public_fields(p),
         **_product_seo_fields(p),
     )
 
@@ -375,6 +389,8 @@ class ProductCreate(BaseModel):
     minimum_age: int | None = Field(None, ge=1, le=99)
     compliance_note: str | None = Field(None, max_length=2000)
     volume_tiers: list[VolumeTierRow] | None = None
+    installation_service_label: str | None = Field(None, max_length=200)
+    installation_service_price: float | None = Field(None, ge=0)
 
     @field_validator("product_code", mode="before")
     @classmethod
@@ -421,6 +437,16 @@ class ProductCreate(BaseModel):
             return self
         cap = volume_tier_price_cap_from_create_body(self)
         validate_volume_tiers_against_cap(cap=cap, tiers=list(self.volume_tiers))
+        return self
+
+    @model_validator(mode="after")
+    def _validate_installation_create(self) -> ProductCreate:
+        lbl = (self.installation_service_label or "").strip()
+        pr = self.installation_service_price
+        if bool(lbl) != (pr is not None):
+            raise ValueError(
+                "installation_service_label and installation_service_price must both be set or both omitted",
+            )
         return self
 
     @field_validator("image_url", "video_url", mode="before")
@@ -489,6 +515,8 @@ class ProductUpdate(BaseModel):
     minimum_age: int | None = Field(None, ge=1, le=99)
     compliance_note: str | None = Field(None, max_length=2000)
     volume_tiers: list[VolumeTierRow] | None = None
+    installation_service_label: str | None = Field(None, max_length=200)
+    installation_service_price: float | None = Field(None, ge=0)
 
     @field_validator("product_code", mode="before")
     @classmethod

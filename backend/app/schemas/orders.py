@@ -12,6 +12,8 @@ class OrderLineIn(BaseModel):
     quantity: int = Field(ge=1, le=99)
     bundle_group_id: UUID | None = None
     bundle_id: UUID | None = None
+    with_installation: bool = False
+    installation_slot_note: str | None = Field(default=None, max_length=500)
 
 
 class OrderCreate(BaseModel):
@@ -35,6 +37,9 @@ class OrderItemPublic(BaseModel):
     unit_price: float
     variant_id: UUID | None = None
     variant_label: str | None = None
+    installation_service_label: str | None = None
+    installation_service_fee: float | None = None
+    installation_slot_note: str | None = None
 
 
 class OrderTrackingStepPublic(BaseModel):
@@ -149,6 +154,11 @@ def order_public(o: Order) -> OrderPublic:
                 unit_price=float(row.unit_price),
                 variant_id=getattr(row, "variant_id", None),
                 variant_label=getattr(row, "variant_label", None),
+                installation_service_label=getattr(row, "installation_service_label", None),
+                installation_service_fee=float(row.installation_service_fee)
+                if getattr(row, "installation_service_fee", None) is not None
+                else None,
+                installation_slot_note=getattr(row, "installation_slot_note", None),
             )
             for row in o.items
         ],

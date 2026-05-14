@@ -168,6 +168,10 @@ def create_product(
         if body.volume_tiers
         else None
     )
+    inst_lbl = (body.installation_service_label.strip() if body.installation_service_label else None) or None
+    inst_fee = Decimal(str(body.installation_service_price)) if body.installation_service_price is not None else None
+    if inst_lbl is None or inst_fee is None:
+        inst_lbl, inst_fee = None, None
     p = Product(
         name=body.name.strip(),
         description=(body.description.strip() if body.description else None) or None,
@@ -188,6 +192,8 @@ def create_product(
         minimum_age=body.minimum_age,
         compliance_note=body.compliance_note,
         volume_tiers=tier_store,
+        installation_service_label=inst_lbl,
+        installation_service_price=inst_fee,
     )
     _validate_product_flash(p)
     db.add(p)
@@ -299,6 +305,16 @@ def update_product(
         p.minimum_age = data.pop("minimum_age")
     if "compliance_note" in data:
         p.compliance_note = data.pop("compliance_note")
+    if "installation_service_label" in data or "installation_service_price" in data:
+        lbl = data.pop("installation_service_label", None)
+        pr = data.pop("installation_service_price", None)
+        ls = (str(lbl).strip() if lbl is not None else "") or ""
+        if ls and pr is not None:
+            p.installation_service_label = ls[:200]
+            p.installation_service_price = Decimal(str(pr))
+        else:
+            p.installation_service_label = None
+            p.installation_service_price = None
     if "sale_price" in data:
         sp = data["sale_price"]
         p.sale_price = Decimal(str(sp)) if sp is not None else None

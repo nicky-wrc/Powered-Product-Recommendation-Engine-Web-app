@@ -6,7 +6,10 @@ export async function flushLocalCartToServer(token: string): Promise<void> {
   const lines = getCart();
   if (lines.length === 0) return;
   for (const line of lines) {
-    await postCartItem(token, line.product_id, line.qty, line.variant_id ?? null);
+    await postCartItem(token, line.product_id, line.qty, line.variant_id ?? null, {
+      with_installation: !!line.with_installation,
+      installation_slot_note: line.installation_slot_note ?? null,
+    });
   }
   clearCart();
 }
@@ -23,6 +26,9 @@ export async function dumpServerCartToLocal(token: string): Promise<void> {
       price: i.unit_price,
       image_url: i.product.image_url,
       qty: Math.max(1, Math.min(99, i.quantity)),
+      with_installation: i.with_installation,
+      installation_slot_note: i.installation_slot_note ?? null,
+      installation_unit_fee: i.installation_unit_fee ?? undefined,
     };
   });
   setCart(lines);

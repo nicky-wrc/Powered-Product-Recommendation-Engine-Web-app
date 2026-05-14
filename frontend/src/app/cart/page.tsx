@@ -49,6 +49,9 @@ type Line = {
   price: number;
   image_url: string | null;
   qty: number;
+  with_installation?: boolean;
+  installation_slot_note?: string | null;
+  installation_unit_fee?: number | null;
 };
 
 export default function CartPage() {
@@ -130,17 +133,50 @@ export default function CartPage() {
                 price: i.unit_price,
                 image_url: i.product.image_url,
                 qty: i.quantity,
+                with_installation: i.with_installation,
+                installation_slot_note: i.installation_slot_note ?? null,
+                installation_unit_fee: i.installation_unit_fee ?? null,
               })),
             );
           } catch {
             setServerMerchSubtotal(null);
             setComplianceCartHint(null);
-            setLines(getCart());
+            setLines(
+              getCart().map((l) => ({
+                product_id: l.product_id,
+                variant_id: l.variant_id ?? null,
+                bundle_group_id: null,
+                bundle_id: null,
+                bundle_name: null,
+                name: l.name,
+                price: l.price,
+                image_url: l.image_url,
+                qty: l.qty,
+                with_installation: l.with_installation,
+                installation_slot_note: l.installation_slot_note ?? null,
+                installation_unit_fee: l.installation_unit_fee ?? null,
+              })),
+            );
           }
         } else {
           setServerMerchSubtotal(null);
           setComplianceCartHint(null);
-          setLines(getCart());
+          setLines(
+            getCart().map((l) => ({
+              product_id: l.product_id,
+              variant_id: l.variant_id ?? null,
+              bundle_group_id: null,
+              bundle_id: null,
+              bundle_name: null,
+              name: l.name,
+              price: l.price,
+              image_url: l.image_url,
+              qty: l.qty,
+              with_installation: l.with_installation,
+              installation_slot_note: l.installation_slot_note ?? null,
+              installation_unit_fee: l.installation_unit_fee ?? null,
+            })),
+          );
         }
       })();
     };
@@ -150,7 +186,10 @@ export default function CartPage() {
   }, []);
 
   const linesSig = lines
-    .map((l) => `${l.product_id}:${l.variant_id ?? ""}:${l.bundle_group_id ?? ""}:${l.qty}`)
+    .map(
+      (l) =>
+        `${l.product_id}:${l.variant_id ?? ""}:${l.bundle_group_id ?? ""}:${l.with_installation ? "1" : "0"}:${l.qty}`,
+    )
     .join("|");
   useEffect(() => {
     startTransition(() => {
@@ -174,6 +213,8 @@ export default function CartPage() {
       variant_id: l.variant_id ?? null,
       bundle_group_id: l.bundle_group_id ?? null,
       bundle_id: l.bundle_id ?? null,
+      with_installation: !!l.with_installation,
+      installation_slot_note: l.installation_slot_note?.trim() ? l.installation_slot_note.trim() : null,
     }));
   }
 
@@ -193,11 +234,11 @@ export default function CartPage() {
     }
     try {
       if (t) {
-        if (next < 1) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null);
-        else await patchCartItem(t, line.product_id, next, line.variant_id ?? null, line.bundle_group_id ?? null);
+        if (next < 1) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
+        else await patchCartItem(t, line.product_id, next, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
       } else {
-        if (next < 1) removeLine(line.product_id, line.variant_id ?? null);
-        else updateLineQty(line.product_id, next, line.variant_id ?? null);
+        if (next < 1) removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
+        else updateLineQty(line.product_id, next, line.variant_id ?? null, !!line.with_installation);
       }
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
@@ -216,9 +257,9 @@ export default function CartPage() {
     if (!ok) return;
     const t = getToken();
     setErr(null);
-      try {
-        if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null);
-      else removeLine(line.product_id, line.variant_id ?? null);
+    try {
+      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
+      else removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Remove failed");
@@ -247,9 +288,12 @@ export default function CartPage() {
         price: line.price,
         image_url: line.image_url,
         qty: line.qty,
+        with_installation: !!line.with_installation,
+        installation_slot_note: line.installation_slot_note ?? null,
+        installation_unit_fee: line.installation_unit_fee ?? null,
       });
-      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
-      else removeLine(line.product_id, line.variant_id ?? null);
+      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null, !!line.with_installation);
+      else removeLine(line.product_id, line.variant_id ?? null, !!line.with_installation);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save for later");
@@ -267,14 +311,22 @@ export default function CartPage() {
     const t = getToken();
     setErr(null);
     try {
-      if (t) await postCartItem(t, row.product_id, row.qty, row.variant_id ?? null);
-      else
-        addOrMergeLine(savedLineAsProduct(row), row.qty, {
+      if (t)
+        await postCartItem(t, row.product_id, row.qty, row.variant_id ?? null, {
+          with_installation: !!row.with_installation,
+          installation_slot_note: row.installation_slot_note ?? null,
+        });
+      else {
+        const p = savedLineAsProduct(row);
+        addOrMergeLine(p, row.qty, {
           variantId: row.variant_id ?? null,
           lineName: row.name,
-          linePrice: row.price,
+          linePrice: p.price,
+          withInstallation: !!row.with_installation,
+          installationSlotNote: row.installation_slot_note ?? null,
         });
-      removeSavedForLater(row.product_id, row.variant_id ?? null);
+      }
+      removeSavedForLater(row.product_id, row.variant_id ?? null, !!row.with_installation);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not move to cart");
@@ -290,7 +342,7 @@ export default function CartPage() {
       variant: "danger",
     });
     if (!ok) return;
-    removeSavedForLater(row.product_id, row.variant_id ?? null);
+    removeSavedForLater(row.product_id, row.variant_id ?? null, !!row.with_installation);
   }
 
   async function applyPromo() {
@@ -566,7 +618,10 @@ export default function CartPage() {
                       stock: 0,
                     });
                     return (
-                      <li key={`${line.product_id}-${line.variant_id ?? ""}-${line.bundle_group_id ?? ""}`} className="flex gap-4 p-4">
+                      <li
+                        key={`${line.product_id}-${line.variant_id ?? ""}-${line.bundle_group_id ?? ""}-${line.with_installation ? "i" : "n"}`}
+                        className="flex gap-4 p-4"
+                      >
                         <Link
                           href={`/products/${line.product_id}`}
                           className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"
@@ -598,6 +653,16 @@ export default function CartPage() {
                               {line.bundle_name ? (
                                 <p className="mt-0.5 text-xs font-medium text-teal-700 dark:text-teal-400">
                                   Bundle: {line.bundle_name}
+                                </p>
+                              ) : null}
+                              {line.with_installation ? (
+                                <p className="mt-0.5 text-xs font-medium text-teal-800 dark:text-teal-200">
+                                  + Installation / setup add-on (per unit)
+                                </p>
+                              ) : null}
+                              {line.installation_slot_note ? (
+                                <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                  Scheduling note: {line.installation_slot_note}
                                 </p>
                               ) : null}
                             </div>
@@ -958,7 +1023,7 @@ export default function CartPage() {
                       stock: 0,
                     });
                     return (
-                      <li key={`${row.product_id}-${row.variant_id ?? ""}`} className="flex gap-4 py-4 first:pt-0 last:pb-0">
+                      <li key={`${row.product_id}-${row.variant_id ?? ""}-${row.with_installation ? "i" : "n"}`} className="flex gap-4 py-4 first:pt-0 last:pb-0">
                         <Link
                           href={`/products/${row.product_id}`}
                           className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"
@@ -988,6 +1053,16 @@ export default function CartPage() {
                           <p className="text-sm text-zinc-600 dark:text-zinc-400">
                             ${row.price.toFixed(2)} · qty {row.qty}
                           </p>
+                          {row.with_installation ? (
+                            <p className="text-xs font-medium text-teal-800 dark:text-teal-200">
+                              + Installation add-on (per unit)
+                            </p>
+                          ) : null}
+                          {row.installation_slot_note ? (
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                              Scheduling note: {row.installation_slot_note}
+                            </p>
+                          ) : null}
                           <div className="flex flex-wrap gap-x-3 gap-y-1">
                             <button
                               type="button"

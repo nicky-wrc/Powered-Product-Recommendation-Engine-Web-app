@@ -280,8 +280,19 @@ export default function OrdersPage() {
                 </div>
                 <ul className="mt-4 space-y-1.5 text-sm text-stone-700 dark:text-stone-300">
                   {o.items.map((it) => (
-                    <li key={`${o.id}-${it.product_id}`}>
-                      {it.product_name} × {it.quantity} @ ${it.unit_price.toFixed(2)}
+                    <li key={`${o.id}-${it.product_id}-${it.variant_id ?? ""}`}>
+                      <div>
+                        {it.product_name} × {it.quantity} @ ${it.unit_price.toFixed(2)}
+                      </div>
+                      {it.installation_service_label ? (
+                        <div className="ml-2 mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                          · {it.installation_service_label}
+                          {it.installation_service_fee != null
+                            ? ` (+$${it.installation_service_fee.toFixed(2)}/unit included in line price)`
+                            : null}
+                          {it.installation_slot_note ? ` — ${it.installation_slot_note}` : null}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -11,10 +11,14 @@ export type CartLine = {
   price: number;
   image_url: string | null;
   qty: number;
+  with_installation?: boolean;
+  installation_slot_note?: string | null;
+  /** Per-unit installation fee when with_installation (for merge/sync). */
+  installation_unit_fee?: number | null;
 };
 
-function lineKey(productId: string, variantId: string | null | undefined): string {
-  return `${productId}::${variantId ?? ""}`;
+function lineKey(productId: string, variantId: string | null | undefined, withInstallation?: boolean): string {
+  return `${productId}::${variantId ?? ""}::${withInstallation ? "1" : "0"}`;
 }
 
 function notifyCartChanged() {
@@ -61,17 +65,26 @@ export function cartItemCount(): number {
 }
 
 export function addOrMergeLine(
-  product: Pick<Product, "id" | "name" | "price" | "image_url">,
+  product: Pick<Product, "id" | "name" | "price" | "image_url"> & Partial<Pick<Product, "installation_service_price">>,
   qty = 1,
-  opts?: { variantId?: string | null; lineName?: string; linePrice?: number },
+  opts?: {
+    variantId?: string | null;
+    lineName?: string;
+    linePrice?: number;
+    withInstallation?: boolean;
+    installationSlotNote?: string | null;
+  },
 ) {
   const add = Math.max(1, Math.min(qty, 99));
   const vid = opts?.variantId ?? null;
+  const wi = !!opts?.withInstallation;
   const displayName = opts?.lineName ?? product.name;
-  const unitPrice = opts?.linePrice ?? product.price;
+  const inst = wi && product.installation_service_price != null ? product.installation_service_price : 0;
+  const unitPrice = (opts?.linePrice ?? product.price) + inst;
+  const instNum = wi && product.installation_service_price != null ? Number(product.installation_service_price) : null;
   const cart = getCart();
-  const k = lineKey(product.id, vid);
-  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null) === k);
+  const k = lineKey(product.id, vid, wi);
+  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null, !!l.with_installation) === k);
   if (i >= 0) {
     const nextQty = Math.min(99, cart[i].qty + add);
     cart[i] = { ...cart[i], qty: nextQty };
@@ -83,15 +96,18 @@ export function addOrMergeLine(
       price: unitPrice,
       image_url: product.image_url,
       qty: add,
+      with_installation: wi || undefined,
+      installation_slot_note: wi ? (opts?.installationSlotNote?.trim() || null) : undefined,
+      installation_unit_fee: wi && instNum != null ? instNum : undefined,
     });
   }
   setCart(cart);
 }
 
-export function updateLineQty(productId: string, qty: number, variantId?: string | null) {
+export function updateLineQty(productId: string, qty: number, variantId?: string | null, withInstallation = false) {
   const cart = getCart();
-  const k = lineKey(productId, variantId ?? null);
-  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null) === k);
+  const k = lineKey(productId, variantId ?? null, withInstallation);
+  const i = cart.findIndex((l) => lineKey(l.product_id, l.variant_id ?? null, !!l.with_installation) === k);
   if (i < 0) return;
   if (qty < 1) {
     cart.splice(i, 1);
@@ -101,9 +117,9 @@ export function updateLineQty(productId: string, qty: number, variantId?: string
   setCart(cart);
 }
 
-export function removeLine(productId: string, variantId?: string | null) {
-  const k = lineKey(productId, variantId ?? null);
-  setCart(getCart().filter((l) => lineKey(l.product_id, l.variant_id ?? null) !== k));
+export function removeLine(productId: string, variantId?: string | null, withInstallation = false) {
+  const k = lineKey(productId, variantId ?? null, withInstallation);
+  setCart(getCart().filter((l) => lineKey(l.product_id, l.variant_id ?? null, !!l.with_installation) !== k));
 }
 
 export function cartSubtotal(lines: CartLine[]): number {

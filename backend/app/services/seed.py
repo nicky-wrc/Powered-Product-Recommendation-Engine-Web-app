@@ -450,6 +450,24 @@ def sync_demo_product_videos(db: Session) -> int:
     return updated
 
 
+def sync_demo_installation_addons(db: Session) -> int:
+    """Demo: optional paid installation add-on on one catalog row (for PDP / cart testing)."""
+    label = "In-home fitting & tread check"
+    fee = Decimal("18.00")
+    target_name = "Trail Grip Hikers"
+    rows = db.scalars(select(Product).where(Product.name == target_name)).all()
+    updated = 0
+    for p in rows:
+        if getattr(p, "installation_service_label", None) == label and getattr(p, "installation_service_price", None) == fee:
+            continue
+        p.installation_service_label = label
+        p.installation_service_price = fee
+        updated += 1
+    if updated:
+        db.commit()
+    return updated
+
+
 def repair_legacy_image_urls(db: Session) -> int:
     """
     Point legacy Unsplash rows at stable Picsum URLs (avoids broken hotlinks).

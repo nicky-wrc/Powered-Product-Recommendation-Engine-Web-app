@@ -43,6 +43,9 @@ class Product(Base):
     a_plus_modules: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     # Quantity breaks: [{ "min_qty": 3, "unit_price": "12.00" }, ...] — min_qty ≥ 2 ; unit_price ≤ list at time of save
     volume_tiers: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    # Optional installation / add-on service (per unit at checkout when customer opts in).
+    installation_service_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    installation_service_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",

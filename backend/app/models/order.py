@@ -73,6 +73,9 @@ class OrderItem(Base):
     product_name: Mapped[str] = mapped_column(String(500), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    installation_service_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    installation_service_fee: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    installation_slot_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     order: Mapped["Order"] = relationship("Order", back_populates="items")
     product: Mapped["Product"] = relationship("Product", back_populates="order_lines")

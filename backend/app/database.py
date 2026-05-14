@@ -45,6 +45,8 @@ def apply_runtime_schema_patches() -> None:
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_price NUMERIC(12,2);",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_ends_at TIMESTAMPTZ;",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS is_gift_card BOOLEAN NOT NULL DEFAULT false;",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS installation_service_label VARCHAR(200);",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS installation_service_price NUMERIC(12,2);",
         ):
             conn.execute(text(stmt))
 
@@ -65,6 +67,8 @@ def apply_runtime_schema_patches() -> None:
             ),
         )
         conn.execute(text("ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS variant_id UUID;"))
+        conn.execute(text("ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS with_installation BOOLEAN NOT NULL DEFAULT false;"))
+        conn.execute(text("ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS installation_slot_note VARCHAR(500);"))
         conn.execute(
             text(
                 """
@@ -82,20 +86,25 @@ def apply_runtime_schema_patches() -> None:
             ),
         )
         conn.execute(text("ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS uq_cart_user_product;"))
+        conn.execute(text("DROP INDEX IF EXISTS uq_cart_user_product_no_variant;"))
+        conn.execute(text("DROP INDEX IF EXISTS uq_cart_user_product_with_variant;"))
         conn.execute(
             text(
                 """
-                DROP INDEX IF EXISTS uq_cart_user_product_no_variant;
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_user_product_no_variant
-                    ON cart_items (user_id, product_id) WHERE variant_id IS NULL;
-                DROP INDEX IF EXISTS uq_cart_user_product_with_variant;
+                    ON cart_items (user_id, product_id, with_installation)
+                    WHERE variant_id IS NULL AND bundle_group_id IS NULL;
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_user_product_with_variant
-                    ON cart_items (user_id, product_id, variant_id) WHERE variant_id IS NOT NULL;
+                    ON cart_items (user_id, product_id, variant_id, with_installation)
+                    WHERE variant_id IS NOT NULL AND bundle_group_id IS NULL;
                 """
             ),
         )
         conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_id UUID;"))
         conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_label VARCHAR(400);"))
+        conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS installation_service_label VARCHAR(200);"))
+        conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS installation_service_fee NUMERIC(12,2);"))
+        conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS installation_slot_note VARCHAR(500);"))
         conn.execute(
             text(
                 """

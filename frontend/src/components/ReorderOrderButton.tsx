@@ -29,13 +29,17 @@ export function ReorderOrderButton({ order }: Props) {
     setMsg(null);
     try {
       for (const it of order.items) {
+        const instFee = it.installation_service_fee ?? 0;
+        const hasInst = !!(it.installation_service_label && it.installation_service_fee != null);
+        const merchUnit = hasInst ? it.unit_price - instFee : it.unit_price;
         await addProductToCart(
           t,
           {
             id: it.product_id,
             name: it.product_name,
-            price: it.unit_price,
+            price: merchUnit,
             image_url: null,
+            installation_service_price: hasInst ? instFee : undefined,
           },
           it.quantity,
           {
@@ -43,6 +47,9 @@ export function ReorderOrderButton({ order }: Props) {
             ...(it.variant_label
               ? { lineName: `${it.product_name} — ${it.variant_label}` }
               : {}),
+            linePrice: merchUnit,
+            withInstallation: hasInst,
+            installationSlotNote: it.installation_slot_note ?? null,
           },
         );
       }

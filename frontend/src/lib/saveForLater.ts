@@ -12,10 +12,14 @@ export type SavedForLaterLine = {
   price: number;
   image_url: string | null;
   qty: number;
+  with_installation?: boolean;
+  installation_slot_note?: string | null;
+  /** Per-unit add-on fee (merchandise unit = price − fee when with_installation). */
+  installation_unit_fee?: number | null;
 };
 
-export function savedLineKey(line: Pick<SavedForLaterLine, "product_id" | "variant_id">): string {
-  return `${line.product_id}::${line.variant_id ?? ""}`;
+export function savedLineKey(line: Pick<SavedForLaterLine, "product_id" | "variant_id" | "with_installation">): string {
+  return `${line.product_id}::${line.variant_id ?? ""}::${line.with_installation ? "1" : "0"}`;
 }
 
 function notify() {
@@ -68,6 +72,9 @@ export function addToSavedForLater(line: SavedForLaterLine) {
         price: line.price,
         image_url: line.image_url,
         variant_id: line.variant_id ?? list[i].variant_id ?? null,
+        with_installation: line.with_installation ?? list[i].with_installation,
+        installation_slot_note: line.installation_slot_note ?? list[i].installation_slot_note ?? null,
+        installation_unit_fee: line.installation_unit_fee ?? list[i].installation_unit_fee ?? null,
       },
       ...rest,
     ];
@@ -77,19 +84,23 @@ export function addToSavedForLater(line: SavedForLaterLine) {
   setSaved(next);
 }
 
-export function removeSavedForLater(productId: string, variantId?: string | null) {
-  const k = savedLineKey({ product_id: productId, variant_id: variantId ?? null });
+export function removeSavedForLater(productId: string, variantId?: string | null, withInstallation = false) {
+  const k = savedLineKey({ product_id: productId, variant_id: variantId ?? null, with_installation: withInstallation });
   setSaved(getSavedForLater().filter((x) => savedLineKey(x) !== k));
 }
 
 /** Reuse cart merge rules: add qty into active cart from a saved row shape. */
 export function savedLineAsProduct(
   line: SavedForLaterLine,
-): Pick<Product, "id" | "name" | "price" | "image_url"> {
+): Pick<Product, "id" | "name" | "price" | "image_url"> & Partial<Pick<Product, "installation_service_price">> {
+  const fee =
+    line.with_installation && typeof line.installation_unit_fee === "number" ? line.installation_unit_fee : null;
+  const merch = fee != null ? line.price - fee : line.price;
   return {
     id: line.product_id,
     name: line.name,
-    price: line.price,
+    price: merch,
     image_url: line.image_url,
+    ...(line.with_installation && fee != null ? { installation_service_price: fee } : {}),
   };
 }

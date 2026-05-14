@@ -26,6 +26,35 @@ from app.services.product_variants import product_ids_requiring_variant
 GIFT_WRAP_FEE = Decimal("4.99")
 
 
+def _norm_install_note(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s[:500] if s else None
+
+
+class CheckoutError(Exception):
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+
+
+def _installation_fee_and_label(p: Product, with_installation: bool) -> tuple[Decimal, str | None]:
+    """Per-unit installation fee and label snapshot; (0, None) when not requested."""
+    if not with_installation:
+        return Decimal("0"), None
+    if getattr(p, "is_gift_card", False):
+        raise CheckoutError(400, "Gift cards cannot include installation add-ons.")
+    fee_raw = getattr(p, "installation_service_price", None)
+    lbl = (getattr(p, "installation_service_label", None) or "").strip()
+    if fee_raw is None or not lbl:
+        raise CheckoutError(400, f"Installation add-on is not available for {p.name}.")
+    fee = Decimal(str(fee_raw)).quantize(Decimal("0.01"))
+    if fee < 0:
+        raise CheckoutError(400, "Invalid installation service price.")
+    return fee, lbl[:200]
+
+
 @dataclass(frozen=True)
 class CheckoutLineSpec:
     product_id: UUID
@@ -33,12 +62,20 @@ class CheckoutLineSpec:
     quantity: int
     bundle_group_id: UUID | None = None
     bundle_id: UUID | None = None
+    with_installation: bool = False
+    installation_slot_note: str | None = None
 
 
-class CheckoutError(Exception):
-    def __init__(self, status_code: int, detail: str):
-        self.status_code = status_code
-        self.detail = detail
+@dataclass(frozen=True)
+class CheckoutOrderRow:
+    product_id: UUID
+    variant_id: UUID | None
+    quantity: int
+    unit_price: Decimal
+    with_installation: bool = False
+    installation_slot_note: str | None = None
+    installation_service_label: str | None = None
+    installation_fee_per_unit: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -49,23 +86,24 @@ class CheckoutPricing:
     need_variants: set[UUID]
     subtotal: Decimal
     """One order row per checkout line (bundle lines use allocated unit prices)."""
-    order_rows: list[tuple[UUID, UUID | None, int, Decimal]]
+    order_rows: list[CheckoutOrderRow]
 
 
 def coalesce_checkout_lines(items: list[OrderLineIn]) -> list[CheckoutLineSpec]:
-    merged: dict[tuple[UUID, UUID | None, UUID | None, UUID | None], int] = defaultdict(int)
+    merged: dict[tuple[UUID, UUID | None, UUID | None, UUID | None, bool, str | None], int] = defaultdict(int)
     for row in items:
-        key = (row.product_id, row.variant_id, row.bundle_group_id, row.bundle_id)
+        note_k = _norm_install_note(row.installation_slot_note) if row.with_installation else None
+        key = (row.product_id, row.variant_id, row.bundle_group_id, row.bundle_id, bool(row.with_installation), note_k)
         merged[key] += row.quantity
     return [
-        CheckoutLineSpec(pid, vid, q, bg, bid)
-        for (pid, vid, bg, bid), q in merged.items()
+        CheckoutLineSpec(pid, vid, q, bg, bid, wi, note)
+        for (pid, vid, bg, bid, wi, note), q in merged.items()
     ]
 
 
 def checkout_specs_from_tuples(lines: list[tuple[UUID, UUID | None, int]]) -> list[CheckoutLineSpec]:
     """Backward-compatible: (product_id, variant_id, quantity) without bundle metadata."""
-    return [CheckoutLineSpec(pid, vid, q, None, None) for pid, vid, q in lines]
+    return [CheckoutLineSpec(pid, vid, q, None, None, False, None) for pid, vid, q in lines]
 
 
 def _line_list_unit(
@@ -167,8 +205,17 @@ def load_checkout_pricing(
             if not getattr(p, "is_gift_card", False) and p.stock < q:
                 raise CheckoutError(409, f"Insufficient stock for {p.name}")
 
+    for spec in lines:
+        if spec.bundle_group_id is not None and (
+            spec.with_installation or _norm_install_note(spec.installation_slot_note)
+        ):
+            raise CheckoutError(400, "Installation add-ons cannot be attached to bundle lines.")
+    for spec in lines:
+        if spec.with_installation:
+            _installation_fee_and_label(products[spec.product_id], True)
+
     subtotal = Decimal("0")
-    order_rows: list[tuple[UUID, UUID | None, int, Decimal]] = []
+    order_rows: list[CheckoutOrderRow] = []
 
     by_bundle_group: dict[UUID, list[CheckoutLineSpec]] = defaultdict(list)
     non_bundle: list[CheckoutLineSpec] = []
@@ -180,9 +227,24 @@ def load_checkout_pricing(
 
     for spec in non_bundle:
         tq = tot_qty[(spec.product_id, spec.variant_id)]
-        unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
+        merch = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
+        p = products[spec.product_id]
+        fee, ilabel = _installation_fee_and_label(p, spec.with_installation)
+        note = _norm_install_note(spec.installation_slot_note) if spec.with_installation else None
+        unit = merch + fee
         subtotal += unit * spec.quantity
-        order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+        order_rows.append(
+            CheckoutOrderRow(
+                spec.product_id,
+                spec.variant_id,
+                spec.quantity,
+                unit,
+                spec.with_installation,
+                note,
+                ilabel,
+                fee,
+            ),
+        )
 
     seen_bundle: set[UUID] = set()
     for spec in lines:
@@ -195,11 +257,22 @@ def load_checkout_pricing(
         group_lines = by_bundle_group[bg]
         bids = {g.bundle_id for g in group_lines}
         if len(bids) != 1 or bids == {None}:
-            for spec in group_lines:
-                tq = tot_qty[(spec.product_id, spec.variant_id)]
-                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
-                subtotal += unit * spec.quantity
-                order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+            for bl_spec in group_lines:
+                tq = tot_qty[(bl_spec.product_id, bl_spec.variant_id)]
+                unit = _line_list_unit(bl_spec.product_id, bl_spec.variant_id, products, variants, need_variants, tq)
+                subtotal += unit * bl_spec.quantity
+                order_rows.append(
+                    CheckoutOrderRow(
+                        bl_spec.product_id,
+                        bl_spec.variant_id,
+                        bl_spec.quantity,
+                        unit,
+                        False,
+                        None,
+                        None,
+                        Decimal("0"),
+                    ),
+                )
             continue
         bid = next(iter(bids))
         bundle = db.get(ProductBundle, bid)
@@ -208,11 +281,22 @@ def load_checkout_pricing(
             (str(s.product_id), str(s.variant_id) if s.variant_id else "", int(s.quantity)) for s in group_lines
         )
         if bundle is None or not bundle.active or exp != act:
-            for spec in group_lines:
-                tq = tot_qty[(spec.product_id, spec.variant_id)]
-                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
-                subtotal += unit * spec.quantity
-                order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+            for bl_spec in group_lines:
+                tq = tot_qty[(bl_spec.product_id, bl_spec.variant_id)]
+                unit = _line_list_unit(bl_spec.product_id, bl_spec.variant_id, products, variants, need_variants, tq)
+                subtotal += unit * bl_spec.quantity
+                order_rows.append(
+                    CheckoutOrderRow(
+                        bl_spec.product_id,
+                        bl_spec.variant_id,
+                        bl_spec.quantity,
+                        unit,
+                        False,
+                        None,
+                        None,
+                        Decimal("0"),
+                    ),
+                )
             continue
 
         line_totals: list[tuple[CheckoutLineSpec, Decimal]] = []
@@ -239,7 +323,18 @@ def load_checkout_pricing(
                     line_amt = (bp * (lt / list_sum)).quantize(Decimal("0.01"))
                 remaining = (remaining - line_amt).quantize(Decimal("0.01"))
             u_alloc = (line_amt / spec.quantity).quantize(Decimal("0.01")) if spec.quantity else Decimal("0")
-            order_rows.append((spec.product_id, spec.variant_id, spec.quantity, u_alloc))
+            order_rows.append(
+                CheckoutOrderRow(
+                    spec.product_id,
+                    spec.variant_id,
+                    spec.quantity,
+                    u_alloc,
+                    False,
+                    None,
+                    None,
+                    Decimal("0"),
+                ),
+            )
 
     return CheckoutPricing(
         merged=dict(merged),
@@ -430,7 +525,9 @@ def fulfill_checkout(
             if not getattr(p, "is_gift_card", False):
                 p.stock -= q
 
-    for pid, vid, q, unit_price in pricing.order_rows:
+    for orow in pricing.order_rows:
+        pid, vid = orow.product_id, orow.variant_id
+        q, unit_price = orow.quantity, orow.unit_price
         p = products[pid]
         if vid is not None:
             v = variants[vid]
@@ -439,6 +536,9 @@ def fulfill_checkout(
         else:
             pname = p.name
             vlabel = None
+        inst_label = orow.installation_service_label if orow.with_installation else None
+        inst_fee = orow.installation_fee_per_unit if orow.with_installation else None
+        inst_note = orow.installation_slot_note if orow.with_installation else None
         db.add(
             OrderItem(
                 order_id=order.id,
@@ -448,6 +548,9 @@ def fulfill_checkout(
                 product_name=pname,
                 quantity=q,
                 unit_price=unit_price,
+                installation_service_label=inst_label,
+                installation_service_fee=inst_fee,
+                installation_slot_note=inst_note,
             ),
         )
         w = interaction_weight("purchase", {"quantity": q})

@@ -17,6 +17,8 @@ export function ProductActions({ product }: Props) {
   const [selectedId, setSelectedId] = useState<string>(() => variants[0]?.id ?? "");
   const { confirm } = useAppModal();
   const [msg, setMsg] = useState<string | null>(null);
+  const [wantInstallation, setWantInstallation] = useState(false);
+  const [installationSlotNote, setInstallationSlotNote] = useState("");
 
   const effectiveId =
     variants.length === 0
@@ -47,6 +49,8 @@ export function ProductActions({ product }: Props) {
         variantId: selected?.id ?? null,
         lineName: selected ? label : undefined,
         linePrice: selected?.price,
+        withInstallation: wantInstallation,
+        installationSlotNote: wantInstallation ? installationSlotNote : null,
       });
       if (t) {
         await postEvent(t, {
@@ -90,6 +94,45 @@ export function ProductActions({ product }: Props) {
             ))}
           </select>
         </label>
+      ) : null}
+      {!product.is_gift_card &&
+      product.installation_service_label &&
+      product.installation_service_price != null ? (
+        <div className="rounded-xl border border-stone-200/80 bg-white/60 p-3 dark:border-zinc-700 dark:bg-zinc-950/40">
+          <label className="flex cursor-pointer items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-stone-300 text-teal-600 focus:ring-teal-500 dark:border-zinc-600"
+              checked={wantInstallation}
+              disabled={variantOutOfStock}
+              onChange={(e) => {
+                setWantInstallation(e.target.checked);
+                if (!e.target.checked) setInstallationSlotNote("");
+              }}
+            />
+            <span className="text-xs text-stone-700 dark:text-stone-300">
+              <span className="font-semibold">{product.installation_service_label}</span>
+              <span className="tabular-nums text-stone-600 dark:text-stone-400">
+                {" "}
+                (+${product.installation_service_price.toFixed(2)} / unit)
+              </span>
+            </span>
+          </label>
+          {wantInstallation ? (
+            <label className="mt-2 block">
+              <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                Preferred visit window or notes (optional)
+              </span>
+              <input
+                value={installationSlotNote}
+                onChange={(e) => setInstallationSlotNote(e.target.value)}
+                maxLength={500}
+                placeholder="e.g. Weekday evenings, after 5pm"
+                className="mt-1 w-full rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs text-stone-900 outline-none focus:border-teal-500 dark:border-zinc-600 dark:bg-zinc-900 dark:text-stone-100"
+              />
+            </label>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <button

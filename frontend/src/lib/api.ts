@@ -80,6 +80,9 @@ export type Product = {
   compliance_note?: string | null;
   /** Volume / tier unit pricing; applied by total quantity per product + variant in cart. */
   volume_tiers?: VolumeTier[] | null;
+  /** Optional paid installation / setup add-on (see PDP checkbox). */
+  installation_service_label?: string | null;
+  installation_service_price?: number | null;
 };
 
 export type ProductPriceHistoryPoint = {
@@ -1228,6 +1231,9 @@ export type CartResponse = {
     bundle_id?: string | null;
     bundle_group_id?: string | null;
     bundle_name?: string | null;
+    with_installation?: boolean;
+    installation_slot_note?: string | null;
+    installation_unit_fee?: number | null;
   }[];
   item_count: number;
   merchandise_subtotal?: number;
@@ -1247,9 +1253,13 @@ export async function postCartItem(
   productId: string,
   quantity: number,
   variantId?: string | null,
+  opts?: { with_installation?: boolean; installation_slot_note?: string | null },
 ): Promise<CartResponse> {
   const body: Record<string, unknown> = { product_id: productId, quantity };
   if (variantId) body.variant_id = variantId;
+  if (opts?.with_installation) body.with_installation = true;
+  const note = opts?.installation_slot_note?.trim();
+  if (note) body.installation_slot_note = note;
   const r = await fetch(`${API_BASE}/api/cart/items`, {
     method: "POST",
     headers: {
@@ -1268,10 +1278,12 @@ export async function patchCartItem(
   quantity: number,
   variantId?: string | null,
   bundleGroupId?: string | null,
+  withInstallation = false,
 ): Promise<CartResponse> {
   const qs = new URLSearchParams();
   if (variantId) qs.set("variant_id", variantId);
   if (bundleGroupId) qs.set("bundle_group_id", bundleGroupId);
+  if (withInstallation) qs.set("with_installation", "true");
   const q = qs.toString() ? `?${qs.toString()}` : "";
   const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "PATCH",
@@ -1290,10 +1302,12 @@ export async function deleteCartItem(
   productId: string,
   variantId?: string | null,
   bundleGroupId?: string | null,
+  withInstallation = false,
 ): Promise<CartResponse> {
   const qs = new URLSearchParams();
   if (variantId) qs.set("variant_id", variantId);
   if (bundleGroupId) qs.set("bundle_group_id", bundleGroupId);
+  if (withInstallation) qs.set("with_installation", "true");
   const q = qs.toString() ? `?${qs.toString()}` : "";
   const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "DELETE",
@@ -1339,6 +1353,9 @@ export type OrderPublic = {
     unit_price: number;
     variant_id?: string | null;
     variant_label?: string | null;
+    installation_service_label?: string | null;
+    installation_service_fee?: number | null;
+    installation_slot_note?: string | null;
   }[];
 };
 

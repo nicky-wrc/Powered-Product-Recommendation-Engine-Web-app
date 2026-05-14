@@ -40,17 +40,27 @@ def _parse_meta_items(raw: str) -> list[CheckoutLineSpec]:
     for item in pairs:
         if len(item) == 2:
             pid_s, q = item[0], item[1]
-            out.append(CheckoutLineSpec(UUID(str(pid_s)), None, int(q), None, None))
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), None, int(q), None, None, False, None))
         elif len(item) == 3:
             pid_s, vid_s, q = item[0], item[1], item[2]
             vid = UUID(str(vid_s)) if vid_s else None
-            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), None, None))
-        else:
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), None, None, False, None))
+        elif len(item) == 5:
             pid_s, vid_s, q, bg_s, bid_s = item[0], item[1], item[2], item[3], item[4]
             vid = UUID(str(vid_s)) if vid_s else None
             bg = UUID(str(bg_s)) if bg_s else None
             bid = UUID(str(bid_s)) if bid_s else None
-            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), bg, bid))
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), bg, bid, False, None))
+        elif len(item) == 7:
+            pid_s, vid_s, q, bg_s, bid_s, inst_s, note_s = item[0], item[1], item[2], item[3], item[4], item[5], item[6]
+            vid = UUID(str(vid_s)) if vid_s else None
+            bg = UUID(str(bg_s)) if bg_s else None
+            bid = UUID(str(bid_s)) if bid_s else None
+            wi = str(inst_s).strip() in ("1", "true", "True")
+            note = str(note_s).strip()[:500] if note_s is not None and str(note_s).strip() else None
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), bg, bid, wi, note))
+        else:
+            raise ValueError("Invalid checkout line metadata shape")
     return out
 
 
@@ -228,22 +238,24 @@ def create_checkout_session(
             },
         )
     else:
-        for pid, vid, q, unit in sorted(
+        for row in sorted(
             pricing.order_rows,
-            key=lambda x: (str(x[0]), str(x[1] or ""), x[2]),
+            key=lambda r: (str(r.product_id), str(r.variant_id or ""), r.quantity),
         ):
-            p = pricing.products[pid]
-            if vid is not None:
-                v = pricing.variants[vid]
+            p = pricing.products[row.product_id]
+            if row.variant_id is not None:
+                v = pricing.variants[row.variant_id]
                 display = f"{p.name} — {v.label}"
             else:
                 display = p.name
+            if row.with_installation:
+                display = f"{display} (+ installation)"
             line_items.append(
                 {
-                    "quantity": q,
+                    "quantity": row.quantity,
                     "price_data": {
                         "currency": "usd",
-                        "unit_amount": _to_cents(unit),
+                        "unit_amount": _to_cents(row.unit_price),
                         "product_data": {"name": display[:120]},
                     },
                 },
@@ -269,6 +281,8 @@ def create_checkout_session(
                 s.quantity,
                 str(s.bundle_group_id) if s.bundle_group_id else "",
                 str(s.bundle_id) if s.bundle_id else "",
+                1 if s.with_installation else 0,
+                (s.installation_slot_note or "")[:80] if s.with_installation else "",
             ]
             for s in lines_specs
         ],
