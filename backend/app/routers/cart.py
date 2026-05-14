@@ -15,6 +15,7 @@ from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemPatch, CartLineResponse, CartResponse
 from app.schemas.products import ProductPublic, product_public
+from app.services.checkout_fulfillment import CheckoutLineSpec, load_checkout_pricing
 from app.services.product_pricing import effective_unit_price, volume_tiered_unit_price
 from app.services.product_variants import product_ids_requiring_variant, variant_aggregates_for_product_ids
 
