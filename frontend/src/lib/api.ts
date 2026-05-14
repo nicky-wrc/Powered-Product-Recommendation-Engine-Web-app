@@ -66,6 +66,25 @@ export type Product = {
   product_code?: string | null;
   meta_title?: string | null;
   meta_description?: string | null;
+  /** Amazon-style A+ blocks for PDP (validated server-side). */
+  a_plus_modules?: Record<string, unknown>[] | null;
+  /** Hazmat / compliance (storefront notices; no legal certification). */
+  is_hazardous?: boolean;
+  minimum_age?: number | null;
+  compliance_note?: string | null;
+};
+
+export type ProductPriceHistoryPoint = {
+  day: string;
+  unit_price: number;
+};
+
+export type ProductPriceHistoryResponse = {
+  product_id: string;
+  currency?: string;
+  points: ProductPriceHistoryPoint[];
+  period_low: number | null;
+  period_high: number | null;
 };
 
 /** True for images stored under our static mount (use with next/image unoptimized in dev/proxy setups). */
@@ -530,6 +549,65 @@ export async function fetchProduct(
   };
 }
 
+export async function fetchProductPriceHistory(
+  productId: string,
+  days = 90,
+): Promise<ProductPriceHistoryResponse | null> {
+  const r = await fetch(`${API_BASE}/api/products/${productId}/price-history?days=${days}`, {
+    next: { revalidate: 60 },
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) return null;
+  return r.json();
+}
+
+export type ProductBundleListRow = {
+  id: string;
+  name: string;
+  slug: string | null;
+  description: string | null;
+  bundle_price: number;
+  list_subtotal: number;
+  savings: number;
+};
+
+export type ProductBundleItemPublic = {
+  product_id: string;
+  variant_id: string | null;
+  quantity: number;
+  product: Product;
+};
+
+export type ProductBundleDetail = ProductBundleListRow & {
+  items: ProductBundleItemPublic[];
+};
+
+export async function fetchProductBundles(): Promise<ProductBundleListRow[]> {
+  const r = await fetch(`${API_BASE}/api/product-bundles`, { next: { revalidate: 30 } });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function fetchProductBundle(id: string): Promise<ProductBundleDetail | null> {
+  const r = await fetch(`${API_BASE}/api/product-bundles/${id}`, { next: { revalidate: 30 } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function postBundleToCart(token: string, bundleId: string, times = 1): Promise<CartResponse> {
+  const r = await fetch(`${API_BASE}/api/cart/bundles/${bundleId}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ times }),
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
 /** PDP bundle by stable store code (e.g. REC-… or custom SKU). */
 export async function fetchProductByStoreCode(
   code: string,
@@ -762,6 +840,11 @@ export type AdminProductCreate = {
   product_code?: string | null;
   meta_title?: string | null;
   meta_description?: string | null;
+  /** JSON array of A+ modules; omit or [] for none */
+  a_plus_modules?: Record<string, unknown>[] | null;
+  is_hazardous?: boolean;
+  minimum_age?: number | null;
+  compliance_note?: string | null;
   /** Optional — create product with SKU rows in one request */
   variants?: AdminProductVariantUpsert[];
 };
@@ -910,8 +993,13 @@ export type CartResponse = {
     variant_id?: string | null;
     variant_label?: string | null;
     unit_price: number;
+    list_unit_price?: number | null;
+    bundle_id?: string | null;
+    bundle_group_id?: string | null;
+    bundle_name?: string | null;
   }[];
   item_count: number;
+  merchandise_subtotal?: number;
 };
 
 export async function fetchCart(token: string): Promise<CartResponse> {
@@ -948,8 +1036,12 @@ export async function patchCartItem(
   productId: string,
   quantity: number,
   variantId?: string | null,
+  bundleGroupId?: string | null,
 ): Promise<CartResponse> {
-  const q = variantId ? `?variant_id=${encodeURIComponent(variantId)}` : "";
+  const qs = new URLSearchParams();
+  if (variantId) qs.set("variant_id", variantId);
+  if (bundleGroupId) qs.set("bundle_group_id", bundleGroupId);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
   const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "PATCH",
     headers: {
@@ -966,8 +1058,12 @@ export async function deleteCartItem(
   token: string,
   productId: string,
   variantId?: string | null,
+  bundleGroupId?: string | null,
 ): Promise<CartResponse> {
-  const q = variantId ? `?variant_id=${encodeURIComponent(variantId)}` : "";
+  const qs = new URLSearchParams();
+  if (variantId) qs.set("variant_id", variantId);
+  if (bundleGroupId) qs.set("bundle_group_id", bundleGroupId);
+  const q = qs.toString() ? `?${qs.toString()}` : "";
   const r = await fetch(`${API_BASE}/api/cart/items/${productId}${q}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
@@ -1155,7 +1251,13 @@ export async function fetchMyGiftCards(token: string): Promise<GiftCardMine[]> {
 
 export async function postOrder(
   token: string,
-  items: { product_id: string; quantity: number; variant_id?: string | null }[],
+  items: {
+    product_id: string;
+    quantity: number;
+    variant_id?: string | null;
+    bundle_group_id?: string | null;
+    bundle_id?: string | null;
+  }[],
   options: OrderCheckoutOptions = {},
 ): Promise<OrderPublic> {
   const {
@@ -1200,7 +1302,13 @@ export async function fetchPaymentStatus(): Promise<PaymentStatus> {
 
 export async function createStripeCheckoutSession(
   token: string,
-  items: { product_id: string; quantity: number; variant_id?: string | null }[],
+  items: {
+    product_id: string;
+    quantity: number;
+    variant_id?: string | null;
+    bundle_group_id?: string | null;
+    bundle_id?: string | null;
+  }[],
   options: Pick<
     OrderCheckoutOptions,
     | "gift_wrap"

@@ -1,7 +1,6 @@
 """Stripe Checkout: create session, webhook, optional sync when webhook is not wired (dev)."""
 
 import json
-from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
@@ -19,9 +18,15 @@ from app.deps import get_current_user
 from app.models.order import Order
 from app.models.user import User
 from app.schemas.orders import OrderLineIn, order_public
-from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, fulfill_checkout, load_checkout_pricing
+from app.services.checkout_fulfillment import (
+    CheckoutError,
+    CheckoutLineSpec,
+    GIFT_WRAP_FEE,
+    coalesce_checkout_lines,
+    fulfill_checkout,
+    load_checkout_pricing,
+)
 from app.services.order_notifications import try_send_order_confirmation
-from app.services.product_pricing import effective_unit_price
 from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
 from app.services.promo_codes import normalize_promo_code, preview_promo_discount
@@ -29,23 +34,23 @@ from app.services.promo_codes import normalize_promo_code, preview_promo_discoun
 router = APIRouter(prefix="/payments", tags=["payments"])
 
 
-def _merge_order_lines(items: list[OrderLineIn]) -> list[tuple[UUID, UUID | None, int]]:
-    merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
-    for row in items:
-        merged[(row.product_id, row.variant_id)] += row.quantity
-    return [(pid, vid, q) for (pid, vid), q in merged.items()]
-
-
-def _parse_meta_items(raw: str) -> list[tuple[UUID, UUID | None, int]]:
+def _parse_meta_items(raw: str) -> list[CheckoutLineSpec]:
     pairs: list = json.loads(raw)
-    out: list[tuple[UUID, UUID | None, int]] = []
+    out: list[CheckoutLineSpec] = []
     for item in pairs:
         if len(item) == 2:
-            out.append((UUID(str(item[0])), None, int(item[1])))
-        else:
+            pid_s, q = item[0], item[1]
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), None, int(q), None, None))
+        elif len(item) == 3:
             pid_s, vid_s, q = item[0], item[1], item[2]
             vid = UUID(str(vid_s)) if vid_s else None
-            out.append((UUID(str(pid_s)), vid, int(q)))
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), None, None))
+        else:
+            pid_s, vid_s, q, bg_s, bid_s = item[0], item[1], item[2], item[3], item[4]
+            vid = UUID(str(vid_s)) if vid_s else None
+            bg = UUID(str(bg_s)) if bg_s else None
+            bid = UUID(str(bid_s)) if bid_s else None
+            out.append(CheckoutLineSpec(UUID(str(pid_s)), vid, int(q), bg, bid))
     return out
 
 
@@ -142,9 +147,9 @@ def create_checkout_session(
             "Stripe is not configured (set STRIPE_SECRET_KEY in backend .env).",
         )
 
-    lines = _merge_order_lines(body.items)
+    lines_specs = coalesce_checkout_lines(body.items)
     try:
-        pricing = load_checkout_pricing(db, lines, lock_rows=False)
+        pricing = load_checkout_pricing(db, lines_specs, lock_rows=False)
     except CheckoutError as e:
         raise HTTPException(e.status_code, e.detail) from e
 
@@ -221,15 +226,16 @@ def create_checkout_session(
             },
         )
     else:
-        for pid, vid, q in sorted(lines, key=lambda x: (str(x[0]), str(x[1] or ""), x[2])):
+        for pid, vid, q, unit in sorted(
+            pricing.order_rows,
+            key=lambda x: (str(x[0]), str(x[1] or ""), x[2]),
+        ):
             p = pricing.products[pid]
             if vid is not None:
                 v = pricing.variants[vid]
                 display = f"{p.name} — {v.label}"
-                unit = v.price
             else:
                 display = p.name
-                unit = effective_unit_price(p)
             line_items.append(
                 {
                     "quantity": q,
@@ -254,7 +260,16 @@ def create_checkout_session(
         )
 
     compact_items = json.dumps(
-        [[str(pid), str(vid) if vid else "", q] for pid, vid, q in lines],
+        [
+            [
+                str(s.product_id),
+                str(s.variant_id) if s.variant_id else "",
+                s.quantity,
+                str(s.bundle_group_id) if s.bundle_group_id else "",
+                str(s.bundle_id) if s.bundle_id else "",
+            ]
+            for s in lines_specs
+        ],
         separators=(",", ":"),
     )
     if len(compact_items) > 450:

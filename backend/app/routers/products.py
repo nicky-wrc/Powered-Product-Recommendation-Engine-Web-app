@@ -1,5 +1,5 @@
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -13,6 +13,7 @@ from app.models.order import Order, OrderItem
 from app.models.product import Product
 from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
+from app.models.product_price_snapshot import ProductPriceSnapshot
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.product_variant import ProductVariant
@@ -24,6 +25,8 @@ from app.schemas.product_qa import (
 from app.schemas.products import (
     ProductBrandRow,
     ProductListResponse,
+    ProductPriceHistoryPoint,
+    ProductPriceHistoryResponse,
     ProductSuggestItem,
     ProductWithSimilar,
     product_public,
@@ -481,6 +484,36 @@ def post_product_question(
     )
     rows = list(db.scalars(stmt).unique().all())
     return ProductQaListResponse(items=[product_qa_item_public(r, user.id) for r in rows])
+
+
+@router.get("/{product_id}/price-history", response_model=ProductPriceHistoryResponse)
+def get_product_price_history(
+    product_id: UUID,
+    days: int = Query(90, ge=1, le=366),
+    db: Session = Depends(get_db),
+) -> ProductPriceHistoryResponse:
+    p = db.get(Product, product_id)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    stmt = (
+        select(ProductPriceSnapshot)
+        .where(
+            ProductPriceSnapshot.product_id == product_id,
+            ProductPriceSnapshot.day >= start,
+            ProductPriceSnapshot.day <= today,
+        )
+        .order_by(ProductPriceSnapshot.day.asc())
+    )
+    rows = list(db.scalars(stmt).all())
+    lows = [float(r.unit_price) for r in rows]
+    return ProductPriceHistoryResponse(
+        product_id=product_id,
+        points=[ProductPriceHistoryPoint(day=r.day, unit_price=float(r.unit_price)) for r in rows],
+        period_low=min(lows) if lows else None,
+        period_high=max(lows) if lows else None,
+    )
 
 
 @router.get("/by-code/{product_code}", response_model=ProductWithSimilar)

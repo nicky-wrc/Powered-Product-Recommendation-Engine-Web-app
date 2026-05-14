@@ -1,6 +1,6 @@
 """Shared checkout completion: stock, order rows, interactions, cart clear."""
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from uuid import UUID
@@ -12,18 +12,27 @@ from app.models.cart_item import CartItem
 from app.models.interaction import Interaction
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.models.product_bundle import ProductBundle, ProductBundleItem
 from app.models.product_variant import ProductVariant
 from app.models.user import User
-from app.services.interaction_weights import interaction_weight
+from app.schemas.orders import OrderLineIn
 from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
+from app.services import promo_codes as promo_svc
+from app.services.interaction_weights import interaction_weight
 from app.services.product_pricing import effective_unit_price
 from app.services.product_variants import product_ids_requiring_variant
-from app.services import promo_codes as promo_svc
 
 GIFT_WRAP_FEE = Decimal("4.99")
 
-CheckoutLine = tuple[UUID, UUID | None, int]  # product_id, variant_id | None, quantity
+
+@dataclass(frozen=True)
+class CheckoutLineSpec:
+    product_id: UUID
+    variant_id: UUID | None
+    quantity: int
+    bundle_group_id: UUID | None = None
+    bundle_id: UUID | None = None
 
 
 class CheckoutError(Exception):
@@ -39,17 +48,62 @@ class CheckoutPricing:
     variants: dict[UUID, ProductVariant]
     need_variants: set[UUID]
     subtotal: Decimal
+    """One order row per checkout line (bundle lines use allocated unit prices)."""
+    order_rows: list[tuple[UUID, UUID | None, int, Decimal]]
+
+
+def coalesce_checkout_lines(items: list[OrderLineIn]) -> list[CheckoutLineSpec]:
+    merged: dict[tuple[UUID, UUID | None, UUID | None, UUID | None], int] = defaultdict(int)
+    for row in items:
+        key = (row.product_id, row.variant_id, row.bundle_group_id, row.bundle_id)
+        merged[key] += row.quantity
+    return [
+        CheckoutLineSpec(pid, vid, q, bg, bid)
+        for (pid, vid, bg, bid), q in merged.items()
+    ]
+
+
+def checkout_specs_from_tuples(lines: list[tuple[UUID, UUID | None, int]]) -> list[CheckoutLineSpec]:
+    """Backward-compatible: (product_id, variant_id, quantity) without bundle metadata."""
+    return [CheckoutLineSpec(pid, vid, q, None, None) for pid, vid, q in lines]
+
+
+def _line_list_unit(
+    pid: UUID,
+    vid: UUID | None,
+    products: dict[UUID, Product],
+    variants: dict[UUID, ProductVariant],
+    need_variants: set[UUID],
+) -> Decimal:
+    p = products[pid]
+    if pid in need_variants:
+        assert vid is not None
+        return variants[vid].price
+    return effective_unit_price(p)
+
+
+def _bundle_item_counter(db: Session, bundle_id: UUID) -> Counter[tuple[str, str, int]]:
+    rows = list(
+        db.scalars(
+            select(ProductBundleItem)
+            .where(ProductBundleItem.bundle_id == bundle_id)
+            .order_by(ProductBundleItem.sort_order.asc(), ProductBundleItem.id.asc()),
+        ).all(),
+    )
+    return Counter(
+        (str(r.product_id), str(r.variant_id) if r.variant_id else "", int(r.quantity)) for r in rows
+    )
 
 
 def load_checkout_pricing(
     db: Session,
-    lines: list[CheckoutLine],
+    lines: list[CheckoutLineSpec],
     *,
     lock_rows: bool = True,
 ) -> CheckoutPricing:
     merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
-    for pid, vid, q in lines:
-        merged[(pid, vid)] += q
+    for spec in lines:
+        merged[(spec.product_id, spec.variant_id)] += spec.quantity
 
     pid_list = {pid for pid, _vid in merged}
     products: dict[UUID, Product] = {}
@@ -92,13 +146,74 @@ def load_checkout_pricing(
                 raise CheckoutError(409, f"Insufficient stock for {p.name}")
 
     subtotal = Decimal("0")
-    for (pid, vid), q in merged.items():
-        p = products[pid]
-        if vid is not None:
-            unit = variants[vid].price
-            subtotal += unit * q
+    order_rows: list[tuple[UUID, UUID | None, int, Decimal]] = []
+
+    by_bundle_group: dict[UUID, list[CheckoutLineSpec]] = defaultdict(list)
+    non_bundle: list[CheckoutLineSpec] = []
+    for spec in lines:
+        if spec.bundle_group_id is not None:
+            by_bundle_group[spec.bundle_group_id].append(spec)
         else:
-            subtotal += effective_unit_price(p) * q
+            non_bundle.append(spec)
+
+    for spec in non_bundle:
+        unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+        subtotal += unit * spec.quantity
+        order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+
+    seen_bundle: set[UUID] = set()
+    for spec in lines:
+        if spec.bundle_group_id is None:
+            continue
+        bg = spec.bundle_group_id
+        if bg in seen_bundle:
+            continue
+        seen_bundle.add(bg)
+        group_lines = by_bundle_group[bg]
+        bids = {g.bundle_id for g in group_lines}
+        if len(bids) != 1 or bids == {None}:
+            for spec in group_lines:
+                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+                subtotal += unit * spec.quantity
+                order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+            continue
+        bid = next(iter(bids))
+        bundle = db.get(ProductBundle, bid)
+        exp = _bundle_item_counter(db, bid)
+        act = Counter(
+            (str(s.product_id), str(s.variant_id) if s.variant_id else "", int(s.quantity)) for s in group_lines
+        )
+        if bundle is None or not bundle.active or exp != act:
+            for spec in group_lines:
+                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+                subtotal += unit * spec.quantity
+                order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
+            continue
+
+        line_totals: list[tuple[CheckoutLineSpec, Decimal]] = []
+        for spec in sorted(group_lines, key=lambda s: (str(s.product_id), str(s.variant_id or ""))):
+            u = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+            line_totals.append((spec, u * spec.quantity))
+        list_sum = sum(lt for _s, lt in line_totals)
+        bp = bundle.bundle_price
+        if list_sum <= 0:
+            bp = Decimal("0")
+        else:
+            bp = min(bp, list_sum)
+        subtotal += bp
+
+        remaining = bp
+        for i, (spec, lt) in enumerate(line_totals):
+            if i == len(line_totals) - 1:
+                line_amt = max(Decimal("0"), remaining)
+            else:
+                if list_sum <= 0:
+                    line_amt = Decimal("0")
+                else:
+                    line_amt = (bp * (lt / list_sum)).quantize(Decimal("0.01"))
+                remaining = (remaining - line_amt).quantize(Decimal("0.01"))
+            u_alloc = (line_amt / spec.quantity).quantize(Decimal("0.01")) if spec.quantity else Decimal("0")
+            order_rows.append((spec.product_id, spec.variant_id, spec.quantity, u_alloc))
 
     return CheckoutPricing(
         merged=dict(merged),
@@ -106,13 +221,14 @@ def load_checkout_pricing(
         variants=variants,
         need_variants=need_variants,
         subtotal=subtotal,
+        order_rows=order_rows,
     )
 
 
 def fulfill_checkout(
     db: Session,
     user_id: UUID,
-    lines: list[CheckoutLine],
+    lines: list[CheckoutLineSpec],
     *,
     payment_method: str,
     stripe_checkout_session_id: str | None = None,
@@ -129,10 +245,6 @@ def fulfill_checkout(
     stripe_gift_card_discount: Decimal | None = None,
     stripe_gift_card_code: str | None = None,
 ) -> Order:
-    """
-    stripe_promo_discount: when set (Stripe paid amount path), skip re-validation amount;
-      must match what was charged. promo_code is stored for display.
-    """
     if stripe_checkout_session_id:
         existing = db.scalar(
             select(Order).where(Order.stripe_checkout_session_id == stripe_checkout_session_id),
@@ -286,15 +398,19 @@ def fulfill_checkout(
         p = products[pid]
         if vid is not None:
             v = variants[vid]
-            unit_price = v.price
             if not getattr(p, "is_gift_card", False):
                 v.stock -= q
+        else:
+            if not getattr(p, "is_gift_card", False):
+                p.stock -= q
+
+    for pid, vid, q, unit_price in pricing.order_rows:
+        p = products[pid]
+        if vid is not None:
+            v = variants[vid]
             pname = p.name
             vlabel = v.label
         else:
-            unit_price = effective_unit_price(p)
-            if not getattr(p, "is_gift_card", False):
-                p.stock -= q
             pname = p.name
             vlabel = None
         db.add(

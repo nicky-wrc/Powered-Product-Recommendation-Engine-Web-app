@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from uuid import UUID
 
@@ -12,7 +11,7 @@ from app.deps import get_current_user
 from app.models.order import Order, OrderItem
 from app.models.user import User
 from app.schemas.orders import OrderCreate, OrderPublic, order_public
-from app.services.checkout_fulfillment import CheckoutError, fulfill_checkout
+from app.services.checkout_fulfillment import CheckoutError, coalesce_checkout_lines, fulfill_checkout
 from app.services.invoice_pdf import build_order_invoice_pdf
 from app.services.order_cancel import cancel_processing_order
 from app.services.order_notifications import try_send_order_confirmation
@@ -26,16 +25,13 @@ def create_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> OrderPublic:
-    merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
-    for row in body.items:
-        merged[(row.product_id, row.variant_id)] += row.quantity
-    lines = [(pid, vid, q) for (pid, vid), q in merged.items()]
+    lines_specs = coalesce_checkout_lines(body.items)
 
     try:
         order = fulfill_checkout(
             db,
             user.id,
-            lines,
+            lines_specs,
             payment_method=body.payment_method or "direct",
             stripe_checkout_session_id=None,
             gift_wrap=body.gift_wrap,

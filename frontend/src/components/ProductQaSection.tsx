@@ -36,6 +36,12 @@ export function ProductQaSection({ productId }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({});
+  /** Match SSR: no `localStorage` on server; avoids form vs login prompt hydration mismatch. */
+  const [clientToken, setClientToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setClientToken(getToken());
+  }, []);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -124,8 +130,6 @@ export function ProductQaSection({ productId }: Props) {
     }
   }
 
-  const token = typeof window !== "undefined" ? getToken() : null;
-
   return (
     <section
       id="product-qa"
@@ -144,7 +148,7 @@ export function ProductQaSection({ productId }: Props) {
         </p>
       ) : null}
 
-      {token ? (
+      {clientToken ? (
         <form onSubmit={(e) => void onAsk(e)} className="space-y-2 rounded-2xl border border-stone-200/80 bg-stone-50/50 p-4 dark:border-zinc-700 dark:bg-zinc-900/40">
           <label className="block text-sm font-medium text-stone-800 dark:text-stone-200">ตั้งคำถามใหม่</label>
           <textarea

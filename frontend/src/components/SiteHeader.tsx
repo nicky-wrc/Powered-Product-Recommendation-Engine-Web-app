@@ -223,6 +223,9 @@ export function SiteHeader() {
           <Link href="/deals" className={navQuiet}>
             Deals
           </Link>
+          <Link href="/bundles" className={navQuiet}>
+            Bundles
+          </Link>
           <Link href="/gift-cards" className={navQuiet}>
             Gift cards
           </Link>
@@ -386,6 +389,9 @@ export function SiteHeader() {
               </Link>
               <Link href="/deals" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
                 Deals
+              </Link>
+              <Link href="/bundles" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
+                Bundles
               </Link>
               <Link href="/gift-cards" className={`${dropdownItem} py-2.5`} onClick={closeAll}>
                 Gift cards

@@ -21,8 +21,13 @@ class CartLineResponse(BaseModel):
     variant_id: UUID | None = None
     variant_label: str | None = None
     unit_price: float
+    list_unit_price: float | None = None
+    bundle_id: UUID | None = None
+    bundle_group_id: UUID | None = None
+    bundle_name: str | None = None
 
 
 class CartResponse(BaseModel):
     items: list[CartLineResponse]
     item_count: int
+    merchandise_subtotal: float = 0.0

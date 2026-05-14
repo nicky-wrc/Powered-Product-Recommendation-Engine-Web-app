@@ -1,6 +1,5 @@
 """Gift card redemption preview and buyer's issued cards."""
 
-from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
@@ -15,7 +14,7 @@ from app.deps import get_current_user
 from app.models.gift_card import GiftCard
 from app.models.user import User
 from app.schemas.orders import OrderLineIn
-from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, load_checkout_pricing
+from app.services.checkout_fulfillment import CheckoutError, GIFT_WRAP_FEE, coalesce_checkout_lines, load_checkout_pricing
 from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
 from app.services.promo_codes import preview_promo_discount
@@ -23,19 +22,11 @@ from app.services.promo_codes import preview_promo_discount
 router = APIRouter(prefix="/gift-cards", tags=["gift-cards"])
 
 
-def _merge_order_lines(items: list[OrderLineIn]) -> list[tuple[UUID, UUID | None, int]]:
-    merged: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
-    for row in items:
-        merged[(row.product_id, row.variant_id)] += row.quantity
-    return [(pid, vid, q) for (pid, vid), q in merged.items()]
-
-
 class GiftCardPreviewBody(BaseModel):
     items: list[OrderLineIn] = Field(min_length=1)
     promo_code: str | None = Field(default=None, max_length=64)
     redeem_loyalty_points: int = Field(default=0, ge=0, le=500_000)
     gift_card_code: str | None = Field(default=None, max_length=40)
-
 
 class GiftCardPreviewResponse(BaseModel):
     valid: bool
@@ -69,7 +60,7 @@ def preview_gift_card(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> GiftCardPreviewResponse:
-    lines = _merge_order_lines(body.items)
+    lines = coalesce_checkout_lines(body.items)
     try:
         pricing = load_checkout_pricing(db, lines, lock_rows=False)
     except CheckoutError as e:

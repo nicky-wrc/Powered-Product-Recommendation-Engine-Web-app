@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.product import Product
+from app.schemas.product_a_plus import normalize_a_plus_modules, safe_a_plus_modules_public
 from app.services.brand_slug import slugify_brand
 from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
 from app.services.product_codes import normalize_product_code
@@ -46,6 +47,20 @@ class ProductPublic(BaseModel):
     product_code: str | None = None
     meta_title: str | None = None
     meta_description: str | None = None
+    a_plus_modules: list[dict] | None = None
+    is_hazardous: bool = False
+    minimum_age: int | None = None
+    compliance_note: str | None = None
+
+
+def _compliance_public_fields(p: Product) -> dict[str, object]:
+    ma = getattr(p, "minimum_age", None)
+    note = getattr(p, "compliance_note", None)
+    return {
+        "is_hazardous": bool(getattr(p, "is_hazardous", False)),
+        "minimum_age": int(ma) if ma is not None else None,
+        "compliance_note": (str(note).strip() if note else None) or None,
+    }
 
 
 def _product_seo_fields(p: Product) -> dict[str, str | None]:
@@ -61,6 +76,12 @@ def _brand_public_fields(p: Product) -> dict[str, str | None]:
     if not raw:
         return {"brand": None, "brand_slug": None}
     return {"brand": raw, "brand_slug": slugify_brand(raw)}
+
+
+def _a_plus_public_fields(p: Product) -> dict[str, list[dict] | None]:
+    return {"a_plus_modules": safe_a_plus_modules_public(getattr(p, "a_plus_modules", None))}
+
+
 def product_public(
     p: Product,
     *,
@@ -109,6 +130,8 @@ def product_public(
             has_variants=True,
             variants=variant_pub,
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
+            **_a_plus_public_fields(p),
+            **_compliance_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -134,6 +157,8 @@ def product_public(
             has_variants=True,
             variants=[],
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
+            **_a_plus_public_fields(p),
+            **_compliance_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -159,6 +184,8 @@ def product_public(
         has_variants=False,
         variants=[],
         is_gift_card=bool(getattr(p, "is_gift_card", False)),
+        **_a_plus_public_fields(p),
+        **_compliance_public_fields(p),
         **_product_seo_fields(p),
     )
 
@@ -174,6 +201,19 @@ class ProductBrandRow(BaseModel):
     name: str
     slug: str
     product_count: int
+
+
+class ProductPriceHistoryPoint(BaseModel):
+    day: date
+    unit_price: float
+
+
+class ProductPriceHistoryResponse(BaseModel):
+    product_id: UUID
+    currency: str = "USD"
+    points: list[ProductPriceHistoryPoint]
+    period_low: float | None = None
+    period_high: float | None = None
 
 
 class ProductSuggestItem(BaseModel):
@@ -245,6 +285,10 @@ class ProductCreate(BaseModel):
     product_code: str | None = Field(None, max_length=40)
     meta_title: str | None = Field(None, max_length=300)
     meta_description: str | None = Field(None, max_length=500)
+    a_plus_modules: list[dict] | None = None
+    is_hazardous: bool = False
+    minimum_age: int | None = Field(None, ge=1, le=99)
+    compliance_note: str | None = Field(None, max_length=2000)
 
     @field_validator("product_code", mode="before")
     @classmethod
@@ -254,6 +298,16 @@ class ProductCreate(BaseModel):
         if not isinstance(v, str):
             raise ValueError("product_code must be a string")
         return normalize_product_code(v)
+
+    @field_validator("compliance_note", mode="before")
+    @classmethod
+    def _strip_compliance_note_create(cls, v: object) -> object:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        return s or None
 
     @field_validator("meta_title", "meta_description", mode="before")
     @classmethod
@@ -303,6 +357,22 @@ class ProductCreate(BaseModel):
             return s or None
         return v
 
+    @field_validator("a_plus_modules", mode="before")
+    @classmethod
+    def _coerce_a_plus_modules_create(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        raise ValueError("a_plus_modules must be a list or null")
+
+    @field_validator("a_plus_modules")
+    @classmethod
+    def _normalize_a_plus_modules_create(cls, v: list | None) -> list[dict] | None:
+        if v is None:
+            return None
+        return normalize_a_plus_modules(v)
+
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=500)
@@ -320,6 +390,10 @@ class ProductUpdate(BaseModel):
     product_code: str | None = Field(None, max_length=40)
     meta_title: str | None = Field(None, max_length=300)
     meta_description: str | None = Field(None, max_length=500)
+    a_plus_modules: list[dict] | None = None
+    is_hazardous: bool | None = None
+    minimum_age: int | None = Field(None, ge=1, le=99)
+    compliance_note: str | None = Field(None, max_length=2000)
 
     @field_validator("product_code", mode="before")
     @classmethod
@@ -331,6 +405,16 @@ class ProductUpdate(BaseModel):
         if not isinstance(v, str):
             raise ValueError("product_code must be a string")
         return normalize_product_code(v)
+
+    @field_validator("compliance_note", mode="before")
+    @classmethod
+    def _strip_compliance_note_update(cls, v: object) -> object:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return v
+        s = v.strip()
+        return s or None
 
     @field_validator("meta_title", "meta_description", mode="before")
     @classmethod
@@ -371,3 +455,19 @@ class ProductUpdate(BaseModel):
             s = v.strip()
             return s or None
         return v
+
+    @field_validator("a_plus_modules", mode="before")
+    @classmethod
+    def _coerce_a_plus_modules_update(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, list):
+            return v
+        raise ValueError("a_plus_modules must be a list or null")
+
+    @field_validator("a_plus_modules")
+    @classmethod
+    def _normalize_a_plus_modules_update(cls, v: list | None) -> list[dict] | None:
+        if v is None:
+            return None
+        return normalize_a_plus_modules(v)

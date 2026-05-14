@@ -42,6 +42,10 @@ type FormDraft = {
   product_code: string;
   meta_title: string;
   meta_description: string;
+  a_plus_json: string;
+  is_hazardous: boolean;
+  minimum_age: string;
+  compliance_note: string;
 };
 
 function tagsForApi(tags: string[]): string[] | null {
@@ -57,6 +61,19 @@ function tagsForApi(tags: string[]): string[] | null {
     if (out.length >= 30) break;
   }
   return out.length ? out : null;
+}
+
+function parseAPlusModulesJson(raw: string): Record<string, unknown>[] | null {
+  const t = raw.trim();
+  if (!t) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(t);
+  } catch {
+    throw new Error("เนื้อหา A+ ไม่ใช่ JSON ที่อ่านได้");
+  }
+  if (!Array.isArray(data)) throw new Error("เนื้อหา A+ ต้องเป็น JSON array");
+  return data as Record<string, unknown>[];
 }
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
@@ -81,6 +98,16 @@ function flashPayloadFromForm(salePriceStr: string, saleEndsLocal: string):
   const iso = new Date(endsTrim);
   if (Number.isNaN(iso.getTime())) throw new Error("วัน-เวลาหมด Flash deal ไม่ถูกต้อง");
   return { sale_price: sp, sale_ends_at: iso.toISOString() };
+}
+
+function parseMinimumAge(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Math.trunc(Number(t));
+  if (!Number.isFinite(n) || n < 1 || n > 99) {
+    throw new Error("อายุขั้นต่ำต้องเป็นจำนวนเต็ม 1–99 หรือว่าง");
+  }
+  return n;
 }
 
 /** Resolve stored `/uploads/...` for <img> in the browser (proxy or direct API). */
@@ -112,6 +139,10 @@ const emptyDraft: FormDraft = {
   product_code: "",
   meta_title: "",
   meta_description: "",
+  a_plus_json: "",
+  is_hazardous: false,
+  minimum_age: "",
+  compliance_note: "",
 };
 
 /** Sentinel for inventory chip "ไม่มีหมวด" — not a real API category name */
@@ -156,6 +187,7 @@ export function AdminProductManager({ token, mode }: Props) {
   const createFileRef = useRef<HTMLInputElement>(null);
   const editFileRef = useRef<HTMLInputElement>(null);
   const editDetailForIdRef = useRef<string | null>(null);
+  const editAPlusJsonBaselineRef = useRef("");
   const [uploading, setUploading] = useState<"create" | "edit" | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -276,7 +308,12 @@ export function AdminProductManager({ token, mode }: Props) {
       product_code: prod.product_code ?? "",
       meta_title: prod.meta_title ?? "",
       meta_description: prod.meta_description ?? "",
+      a_plus_json: prod.a_plus_modules?.length ? JSON.stringify(prod.a_plus_modules, null, 2) : "",
+      is_hazardous: Boolean(prod.is_hazardous),
+      minimum_age: prod.minimum_age != null && prod.minimum_age > 0 ? String(prod.minimum_age) : "",
+      compliance_note: prod.compliance_note ?? "",
     });
+    editAPlusJsonBaselineRef.current = prod.a_plus_modules?.length ? JSON.stringify(prod.a_plus_modules, null, 2) : "";
     setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
     setEditVariants(
       (prod.variants ?? []).map((v) => ({
@@ -307,7 +344,12 @@ export function AdminProductManager({ token, mode }: Props) {
       product_code: p.product_code ?? "",
       meta_title: p.meta_title ?? "",
       meta_description: p.meta_description ?? "",
+      a_plus_json: p.a_plus_modules?.length ? JSON.stringify(p.a_plus_modules, null, 2) : "",
+      is_hazardous: Boolean(p.is_hazardous),
+      minimum_age: p.minimum_age != null && p.minimum_age > 0 ? String(p.minimum_age) : "",
+      compliance_note: p.compliance_note ?? "",
     });
+    editAPlusJsonBaselineRef.current = p.a_plus_modules?.length ? JSON.stringify(p.a_plus_modules, null, 2) : "";
     setEditGallery([]);
     setEditVariants([]);
     setGalleryLoading(true);
@@ -356,6 +398,8 @@ export function AdminProductManager({ token, mode }: Props) {
       const galleryUrls = createGallery.map((x) => x.url.trim()).filter(Boolean);
       const image_url = galleryUrls[0] ?? null;
       const variantsPayload = variantUpsertsFromDraft(createVariants);
+      const aPlus = parseAPlusModulesJson(createForm.a_plus_json);
+      const minAge = parseMinimumAge(createForm.minimum_age);
       const created = await adminCreateProduct(token, {
         name: createForm.name.trim(),
         description: createForm.description.trim() || null,
@@ -369,6 +413,10 @@ export function AdminProductManager({ token, mode }: Props) {
         product_code: createForm.product_code.trim() || null,
         meta_title: createForm.meta_title.trim() || null,
         meta_description: createForm.meta_description.trim() || null,
+        is_hazardous: createForm.is_hazardous,
+        minimum_age: minAge,
+        compliance_note: createForm.compliance_note.trim() || null,
+        ...(aPlus != null ? { a_plus_modules: aPlus } : {}),
         ...(flash === "empty" ? {} : flash),
         ...(variantsPayload.length > 0 ? { variants: variantsPayload } : {}),
       });
@@ -441,6 +489,15 @@ export function AdminProductManager({ token, mode }: Props) {
         meta_description: form.meta_description.trim() || null,
         ...flashPart,
       };
+      const apTrim = form.a_plus_json.trim();
+      const apBase = editAPlusJsonBaselineRef.current.trim();
+      if (apTrim !== apBase) {
+        body.a_plus_modules = apTrim ? parseAPlusModulesJson(form.a_plus_json) : null;
+      }
+      const minAge = parseMinimumAge(form.minimum_age);
+      body.is_hazardous = form.is_hazardous;
+      body.minimum_age = minAge;
+      body.compliance_note = form.compliance_note.trim() || null;
       if (editGallery.length === 0) {
         body.image_url = form.image_url.trim() || null;
       }
@@ -718,6 +775,39 @@ export function AdminProductManager({ token, mode }: Props) {
                 className="mt-1.5 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
               />
             </label>
+            <div className="space-y-3 rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 sm:col-span-2 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">ข้อจำกับ / hazmat (แสดงบน PDP)</p>
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-stone-800 dark:text-stone-200">
+                <input
+                  type="checkbox"
+                  checked={createForm.is_hazardous}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, is_hazardous: e.target.checked }))}
+                  className="rounded border-stone-300 text-teal-600 focus:ring-teal-500"
+                />
+                สินค้าอันตรายหรือจัดเก็บพิเศษ (ข้อจำกัดการขนส่ง)
+              </label>
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
+                จำกัดอายุผู้ซื้อ (ปี) — ว่าง = ไม่จำกัด
+                <input
+                  inputMode="numeric"
+                  value={createForm.minimum_age}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, minimum_age: e.target.value }))}
+                  placeholder="เช่น 18"
+                  className="mt-1.5 w-full max-w-[8rem] rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm tabular-nums shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+              <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
+                หมายเหตุข้อจำกัดการส่ง / ปฏิบัติตามกฎ
+                <textarea
+                  rows={2}
+                  value={createForm.compliance_note}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, compliance_note: e.target.value }))}
+                  maxLength={2000}
+                  placeholder="เช่น ส่งได้เฉพาะทางบก — ไม่ส่งต่างประเทศ"
+                  className="mt-1.5 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+                />
+              </label>
+            </div>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300">
               ราคา
               <input
@@ -782,6 +872,17 @@ export function AdminProductManager({ token, mode }: Props) {
                 placeholder="เช่น Acme Co. — ว่างได้"
                 maxLength={120}
                 className="mt-1.5 w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
+              />
+            </label>
+            <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
+              เนื้อหา A+ (JSON array) — ว่างได้ · โมดูล: banner, feature_list, image_text
+              <textarea
+                rows={5}
+                value={createForm.a_plus_json}
+                onChange={(e) => setCreateForm((d) => ({ ...d, a_plus_json: e.target.value }))}
+                spellCheck={false}
+                placeholder={`[\n  {"type":"banner","headline":"Welcome","body":"ข้อความ","image_url":"/uploads/products/…"},\n  {"type":"feature_list","title":"จุดเด่น","items":["ข้อ 1","ข้อ 2"]},\n  {"type":"image_text","title":"รายละเอียด","body":"…","image_url":"/uploads/products/…","image_align":"left"}\n]`}
+                className="mt-1.5 w-full resize-y rounded-lg border border-stone-200 bg-white px-3 py-2 font-mono text-xs leading-relaxed shadow-sm outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100"
               />
             </label>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
@@ -1169,6 +1270,38 @@ export function AdminProductManager({ token, mode }: Props) {
                           className="mt-1 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
                         />
                       </label>
+                      <div className="space-y-3 rounded-xl border border-amber-200/80 bg-amber-50/50 p-4 sm:col-span-2 dark:border-amber-900/40 dark:bg-amber-950/20">
+                        <p className="text-xs font-semibold text-amber-950 dark:text-amber-100">ข้อจำกับ / hazmat</p>
+                        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-stone-800 dark:text-stone-200">
+                          <input
+                            type="checkbox"
+                            checked={form.is_hazardous}
+                            onChange={(e) => setForm((f) => ({ ...f, is_hazardous: e.target.checked }))}
+                            className="rounded border-stone-300 text-teal-600 focus:ring-teal-500"
+                          />
+                          สินค้าอันตรายหรือจัดเก็บพิเศษ
+                        </label>
+                        <label className="block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                          จำกัดอายุ (ปี) — ว่าง = ไม่จำกัด
+                          <input
+                            inputMode="numeric"
+                            value={form.minimum_age}
+                            onChange={(e) => setForm((f) => ({ ...f, minimum_age: e.target.value }))}
+                            placeholder="18"
+                            className="mt-1 w-full max-w-[8rem] rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                          />
+                        </label>
+                        <label className="block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                          หมายเหตุข้อจำกัดการส่ง
+                          <textarea
+                            rows={2}
+                            value={form.compliance_note}
+                            onChange={(e) => setForm((f) => ({ ...f, compliance_note: e.target.value }))}
+                            maxLength={2000}
+                            className="mt-1 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                          />
+                        </label>
+                      </div>
                       <input
                         inputMode="decimal"
                         value={form.price}
@@ -1224,6 +1357,16 @@ export function AdminProductManager({ token, mode }: Props) {
                           maxLength={120}
                           placeholder="เช่น Acme Co."
                           className="mt-1 w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="sm:col-span-2 block text-[11px] font-medium text-stone-600 dark:text-stone-300">
+                        A+ เนื้อหา (JSON array) — เว้นว่างคงค่าเดิมเมื่อไม่แก้
+                        <textarea
+                          rows={5}
+                          value={form.a_plus_json}
+                          onChange={(e) => setForm((f) => ({ ...f, a_plus_json: e.target.value }))}
+                          spellCheck={false}
+                          className="mt-1 w-full resize-y rounded-xl border border-stone-200 bg-white px-3 py-2.5 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-950"
                         />
                       </label>
                       <div className="sm:col-span-2">

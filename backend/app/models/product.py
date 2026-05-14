@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, JSON, Numeric, SmallInteger, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,10 +32,15 @@ class Product(Base):
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     sale_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_gift_card: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_hazardous: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    minimum_age: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    compliance_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Stable storefront / SEO code (ASIN-style), e.g. REC-<uuidhex>. Unique when set.
     product_code: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True, index=True)
     meta_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
     meta_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Amazon-style A+ modules: JSON list of { type: banner | feature_list | image_text, ... }
+    a_plus_modules: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",
@@ -63,4 +68,10 @@ class Product(Base):
         "ProductQuestion",
         back_populates="product",
         cascade="all, delete-orphan",
+    )
+    price_snapshots: Mapped[list["ProductPriceSnapshot"]] = relationship(
+        "ProductPriceSnapshot",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductPriceSnapshot.day",
     )

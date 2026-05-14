@@ -7,6 +7,7 @@ import { useEffect, useState, startTransition } from "react";
 
 import { SiteHeader } from "@/components/SiteHeader";
 import { FreeShippingProgress } from "@/components/FreeShippingProgress";
+import { productNeedsComplianceNotice } from "@/components/ProductComplianceSection";
 import { useAppModal } from "@/components/AppModalProvider";
 import {
   API_BASE,
@@ -39,6 +40,9 @@ import {
 type Line = {
   product_id: string;
   variant_id?: string | null;
+  bundle_group_id?: string | null;
+  bundle_id?: string | null;
+  bundle_name?: string | null;
   name: string;
   price: number;
   image_url: string | null;
@@ -66,6 +70,8 @@ export default function CartPage() {
   const [gcHint, setGcHint] = useState<string | null>(null);
   const [giftRecipientEmail, setGiftRecipientEmail] = useState("");
   const [giftRecipientMessage, setGiftRecipientMessage] = useState("");
+  const [serverMerchSubtotal, setServerMerchSubtotal] = useState<number | null>(null);
+  const [complianceCartHint, setComplianceCartHint] = useState<string | null>(null);
 
   useEffect(() => {
     void fetchPaymentStatus()
@@ -87,10 +93,20 @@ export default function CartPage() {
         if (t) {
           try {
             const c = await fetchCart(t);
+            setServerMerchSubtotal(typeof c.merchandise_subtotal === "number" ? c.merchandise_subtotal : null);
+            const flagged = c.items.filter((i) => productNeedsComplianceNotice(i.product)).length;
+            setComplianceCartHint(
+              flagged > 0
+                ? `ตะกร้ามีสินค้าที่มีข้อจำกัดด้านความปลอดภัยหรืออายุ (${flagged} รายการ) — เปิดหน้าสินค้าเพื่ออ่านรายละเอียดก่อนชำระเงิน`
+                : null,
+            );
             setLines(
               c.items.map((i) => ({
                 product_id: i.product.id,
                 variant_id: i.variant_id ?? null,
+                bundle_group_id: i.bundle_group_id ?? null,
+                bundle_id: i.bundle_id ?? null,
+                bundle_name: i.bundle_name ?? null,
                 name: i.variant_label ? `${i.product.name} — ${i.variant_label}` : i.product.name,
                 price: i.unit_price,
                 image_url: i.product.image_url,
@@ -98,9 +114,13 @@ export default function CartPage() {
               })),
             );
           } catch {
+            setServerMerchSubtotal(null);
+            setComplianceCartHint(null);
             setLines(getCart());
           }
         } else {
+          setServerMerchSubtotal(null);
+          setComplianceCartHint(null);
           setLines(getCart());
         }
       })();
@@ -110,7 +130,9 @@ export default function CartPage() {
     return () => window.removeEventListener(CART_CHANGED_EVENT, sync);
   }, []);
 
-  const linesSig = lines.map((l) => `${l.product_id}:${l.variant_id ?? ""}:${l.qty}`).join("|");
+  const linesSig = lines
+    .map((l) => `${l.product_id}:${l.variant_id ?? ""}:${l.bundle_group_id ?? ""}:${l.qty}`)
+    .join("|");
   useEffect(() => {
     startTransition(() => {
       setAppliedPromo(null);
@@ -131,6 +153,8 @@ export default function CartPage() {
       product_id: l.product_id,
       quantity: l.qty,
       variant_id: l.variant_id ?? null,
+      bundle_group_id: l.bundle_group_id ?? null,
+      bundle_id: l.bundle_id ?? null,
     }));
   }
 
@@ -150,8 +174,8 @@ export default function CartPage() {
     }
     try {
       if (t) {
-        if (next < 1) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
-        else await patchCartItem(t, line.product_id, next, line.variant_id ?? null);
+        if (next < 1) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null);
+        else await patchCartItem(t, line.product_id, next, line.variant_id ?? null, line.bundle_group_id ?? null);
       } else {
         if (next < 1) removeLine(line.product_id, line.variant_id ?? null);
         else updateLineQty(line.product_id, next, line.variant_id ?? null);
@@ -173,8 +197,8 @@ export default function CartPage() {
     if (!ok) return;
     const t = getToken();
     setErr(null);
-    try {
-      if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null);
+      try {
+        if (t) await deleteCartItem(t, line.product_id, line.variant_id ?? null, line.bundle_group_id ?? null);
       else removeLine(line.product_id, line.variant_id ?? null);
       window.dispatchEvent(new Event(CART_CHANGED_EVENT));
     } catch (e) {
@@ -183,6 +207,10 @@ export default function CartPage() {
   }
 
   async function saveLineForLater(line: Line) {
+    if (line.bundle_group_id) {
+      setErr("Save for later is not available for bundle lines. Remove items or use quantity controls.");
+      return;
+    }
     const ok = await confirm({
       title: "Save for later",
       message: `ย้าย "${line.name}" (จำนวน ${line.qty}) ออกจากตะกร้าไปเก็บใน Saved for later?`,
@@ -365,7 +393,7 @@ export default function CartPage() {
     }
     if (lines.length === 0) return;
     const GIFT_WRAP_FEE = 4.99;
-    const merchandiseSubtotal = cartSubtotal(lines);
+    const merchandiseSubtotal = serverMerchSubtotal ?? cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
     const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
     const loyaltyDiscount = appliedLoyalty?.discount ?? 0;
@@ -385,11 +413,7 @@ export default function CartPage() {
     try {
       await postOrder(
         token,
-        lines.map((l) => ({
-          product_id: l.product_id,
-          quantity: l.qty,
-          variant_id: l.variant_id ?? null,
-        })),
+        orderLinePayload(),
         {
           payment_method: "direct",
           gift_wrap: giftWrap,
@@ -422,7 +446,7 @@ export default function CartPage() {
     }
     if (lines.length === 0) return;
     const GIFT_WRAP_FEE = 4.99;
-    const merchandiseSubtotal = cartSubtotal(lines);
+    const merchandiseSubtotal = serverMerchSubtotal ?? cartSubtotal(lines);
     const promoDiscount = appliedPromo?.discount ?? 0;
     const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
     const loyaltyDiscount = appliedLoyalty?.discount ?? 0;
@@ -442,11 +466,7 @@ export default function CartPage() {
     try {
       const { url } = await createStripeCheckoutSession(
         token,
-        lines.map((l) => ({
-          product_id: l.product_id,
-          quantity: l.qty,
-          variant_id: l.variant_id ?? null,
-        })),
+        orderLinePayload(),
         {
           gift_wrap: giftWrap,
           gift_message: giftWrap ? giftMessage : null,
@@ -464,7 +484,7 @@ export default function CartPage() {
     }
   }
 
-  const merchandiseSubtotal = cartSubtotal(lines);
+  const merchandiseSubtotal = serverMerchSubtotal ?? cartSubtotal(lines);
   const GIFT_WRAP_FEE = 4.99;
   const promoDiscount = appliedPromo?.discount ?? 0;
   const afterPromo = Math.max(0, merchandiseSubtotal - promoDiscount);
@@ -494,6 +514,12 @@ export default function CartPage() {
           </p>
         ) : null}
 
+        {complianceCartHint ? (
+          <p className="rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100">
+            {complianceCartHint}
+          </p>
+        ) : null}
+
         {lines.length === 0 && saved.length === 0 ? (
           <p className="text-sm text-stone-600 dark:text-stone-400">
             Your cart is empty.{" "}
@@ -520,7 +546,7 @@ export default function CartPage() {
                       stock: 0,
                     });
                     return (
-                      <li key={`${line.product_id}-${line.variant_id ?? ""}`} className="flex gap-4 p-4">
+                      <li key={`${line.product_id}-${line.variant_id ?? ""}-${line.bundle_group_id ?? ""}`} className="flex gap-4 p-4">
                         <Link
                           href={`/products/${line.product_id}`}
                           className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900"
@@ -542,20 +568,29 @@ export default function CartPage() {
                         </Link>
                         <div className="min-w-0 flex-1 space-y-2">
                           <div className="flex flex-wrap items-start justify-between gap-2">
-                            <Link
-                              href={`/products/${line.product_id}`}
-                              className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
-                            >
-                              {line.name}
-                            </Link>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1">
-                              <button
-                                type="button"
-                                onClick={() => void saveLineForLater(line)}
-                                className="text-xs font-medium text-teal-700 hover:underline dark:text-teal-400"
+                            <div>
+                              <Link
+                                href={`/products/${line.product_id}`}
+                                className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
                               >
-                                Save for later
-                              </button>
+                                {line.name}
+                              </Link>
+                              {line.bundle_name ? (
+                                <p className="mt-0.5 text-xs font-medium text-teal-700 dark:text-teal-400">
+                                  Bundle: {line.bundle_name}
+                                </p>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                              {!line.bundle_group_id ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void saveLineForLater(line)}
+                                  className="text-xs font-medium text-teal-700 hover:underline dark:text-teal-400"
+                                >
+                                  Save for later
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => void remove(line)}

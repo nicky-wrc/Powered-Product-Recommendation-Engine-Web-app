@@ -4,13 +4,16 @@ import { notFound } from "next/navigation";
 
 import { CompareToggle } from "@/components/CompareToggle";
 import { ProductActions } from "@/components/ProductActions";
+import { ProductAPlusSection } from "@/components/ProductAPlusSection";
 import { ProductCard } from "@/components/ProductCard";
+import { ProductComplianceSection } from "@/components/ProductComplianceSection";
 import { ProductExploreTrustSection } from "@/components/ProductExploreTrustSection";
 import { ProductHighlightsSection } from "@/components/ProductHighlightsSection";
 import { ProductFaqSection } from "@/components/ProductFaqSection";
 import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { FlashSaleCountdown } from "@/components/FlashSaleCountdown";
 import { ProductMediaSpotlightSection } from "@/components/ProductMediaSpotlightSection";
+import { ProductPriceHistorySection } from "@/components/ProductPriceHistorySection";
 import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
 import { ProductQaSection } from "@/components/ProductQaSection";
 import { ProductRecommendationGridSection } from "@/components/ProductRecommendationGridSection";
@@ -24,7 +27,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SustainabilityBadge } from "@/components/SustainabilityBadge";
 import { WishlistHeart } from "@/components/WishlistHeart";
 import { TrackProductView } from "@/components/TrackProductView";
-import { fetchProduct, productGalleryUrls } from "@/lib/api";
+import { fetchProduct, fetchProductPriceHistory, productGalleryUrls } from "@/lib/api";
 import { concurrentViewersIllustration } from "@/lib/socialProof";
 import { absoluteUrl } from "@/lib/siteUrl";
 import { getVideoEmbedInfo } from "@/lib/videoEmbed";
@@ -80,7 +83,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ProductDetailPage({ params }: Props) {
   const { id } = await params;
-  const data = await getProductPageData(id);
+  const [data, priceHistory] = await Promise.all([
+    getProductPageData(id),
+    fetchProductPriceHistory(id).catch(() => null),
+  ]);
   if (!data) notFound();
   const { product: p, similar_products, bought_together, review_summary, review_eligibility } = data;
   const shareUrl = absoluteUrl(
@@ -248,6 +254,8 @@ export default async function ProductDetailPage({ params }: Props) {
           </div>
         </div>
 
+        <ProductComplianceSection product={p} />
+
         <ProductReviewsSection productId={p.id} initialSummary={review_summary} initialEligibility={review_eligibility} />
 
         <ProductQaSection productId={p.id} />
@@ -257,6 +265,10 @@ export default async function ProductDetailPage({ params }: Props) {
           reviewCount={review_summary.count}
           reviewAverage={review_summary.average}
         />
+
+        <ProductPriceHistorySection history={priceHistory} currentPrice={p.price} />
+
+        <ProductAPlusSection product={p} />
 
         <ProductServicePoliciesSection product={p} />
 

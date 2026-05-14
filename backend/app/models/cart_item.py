@@ -20,6 +20,13 @@ class CartItem(Base):
         index=True,
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    bundle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("product_bundles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    bundle_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
 
     user: Mapped["User"] = relationship("User", back_populates="cart_items")
     product: Mapped["Product"] = relationship("Product", back_populates="cart_entries")

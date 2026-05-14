@@ -10,6 +10,8 @@ class OrderLineIn(BaseModel):
     product_id: UUID
     variant_id: UUID | None = None
     quantity: int = Field(ge=1, le=99)
+    bundle_group_id: UUID | None = None
+    bundle_id: UUID | None = None
 
 
 class OrderCreate(BaseModel):

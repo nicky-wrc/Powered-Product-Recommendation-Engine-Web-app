@@ -101,19 +101,26 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
 
   const [eligibility, setEligibility] = useState<ProductReviewEligibility>(initialEligibility);
   const [eligibilityLoading, setEligibilityLoading] = useState(true);
+  /** Avoid hydration mismatch: `getToken()` is always null during SSR (no `window`). */
+  const [clientToken, setClientToken] = useState<string | null>(null);
 
   useEffect(() => {
-    startTransition(() => {
-      setEligibility(initialEligibility);
-    });
-  }, [initialEligibility]);
+    setClientToken(getToken());
+  }, []);
 
   useEffect(() => {
+    if (clientToken == null) {
+      startTransition(() => {
+        setEligibility(initialEligibility);
+        setEligibilityLoading(false);
+      });
+      return;
+    }
     let cancelled = false;
     startTransition(() => setEligibilityLoading(true));
     void (async () => {
       try {
-        const e = await fetchProductReviewEligibility(productId, getToken());
+        const e = await fetchProductReviewEligibility(productId, clientToken);
         if (!cancelled) setEligibility(e);
       } catch {
         if (!cancelled) setEligibility({ can_submit_review: false, reason: null });
@@ -124,7 +131,7 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, clientToken, initialEligibility]);
 
   const loadPage = useCallback(
     async (p: number, append: boolean) => {
@@ -267,7 +274,7 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
         </div>
       </div>
 
-      {getToken() ? (
+      {clientToken ? (
         eligibilityLoading ? (
         <p className="text-sm text-stone-500 dark:text-stone-400">กำลังตรวจสอบสิทธิ์รีวิว…</p>
       ) : eligibility.can_submit_review ? (

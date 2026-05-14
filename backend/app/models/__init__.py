@@ -2,6 +2,8 @@ from app.models.cart_item import CartItem
 from app.models.interaction import Interaction
 from app.models.order import Order, OrderItem
 from app.models.product import Product
+from app.models.product_bundle import ProductBundle, ProductBundleItem
+from app.models.product_price_snapshot import ProductPriceSnapshot
 from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
@@ -17,6 +19,9 @@ __all__ = [
     "User",
     "UserAddress",
     "Product",
+    "ProductBundle",
+    "ProductBundleItem",
+    "ProductPriceSnapshot",
     "ProductImage",
     "ProductVariant",
     "PromoCode",

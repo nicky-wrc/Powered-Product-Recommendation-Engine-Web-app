@@ -16,6 +16,7 @@ from app.models.interaction import Interaction
 from app.models.order import Order
 from app.models.product import Product
 from app.models.product_answer import ProductAnswer
+from app.models.product_bundle import ProductBundle, ProductBundleItem
 from app.models.product_image import ProductImage
 from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
@@ -24,6 +25,13 @@ from app.models.promo_code import PromoCode
 from app.models.user import User
 from app.schemas.orders import OrderPublic, order_public
 from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
+from app.schemas.product_bundles import (
+    AdminBundleItemIn,
+    ProductBundleCreateBody,
+    ProductBundleListRow,
+    ProductBundlePublic,
+    ProductBundleUpdateBody,
+)
 from app.schemas.products import (
     AdminProductDetailResponse,
     ProductCreate,
@@ -34,8 +42,11 @@ from app.schemas.products import (
     ProductUpdate,
     product_public,
 )
+from app.services.product_bundles_public import product_bundle_list_row, product_bundle_public
 from app.services.product_gallery import sync_product_cover
+from app.services.product_price_history import upsert_product_price_snapshot
 from app.services.product_qa import product_qa_item_public
+from app.services.product_variants import product_ids_requiring_variant
 from app.upload_paths import PRODUCT_IMAGES_DIR
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -156,6 +167,10 @@ def create_product(
         product_code=body.product_code,
         meta_title=body.meta_title,
         meta_description=body.meta_description,
+        a_plus_modules=body.a_plus_modules,
+        is_hazardous=bool(body.is_hazardous),
+        minimum_age=body.minimum_age,
+        compliance_note=body.compliance_note,
     )
     _validate_product_flash(p)
     db.add(p)
@@ -190,6 +205,8 @@ def create_product(
             .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
         ).all(),
     )
+    upsert_product_price_snapshot(db, p)
+    db.commit()
     return product_public(p, variants_for_detail=vrows if vrows else None)
 
 
@@ -255,6 +272,14 @@ def update_product(
         p.meta_title = data["meta_title"]
     if "meta_description" in data:
         p.meta_description = data["meta_description"]
+    if "a_plus_modules" in data:
+        p.a_plus_modules = data.pop("a_plus_modules")
+    if "is_hazardous" in data:
+        p.is_hazardous = bool(data.pop("is_hazardous"))
+    if "minimum_age" in data:
+        p.minimum_age = data.pop("minimum_age")
+    if "compliance_note" in data:
+        p.compliance_note = data.pop("compliance_note")
     if "sale_price" in data:
         sp = data["sale_price"]
         p.sale_price = Decimal(str(sp)) if sp is not None else None
@@ -298,8 +323,14 @@ def update_product(
     db.commit()
     db.refresh(p)
     vrows = list(
-        db.scalars(select(ProductVariant).where(ProductVariant.product_id == p.id)).all(),
+        db.scalars(
+            select(ProductVariant)
+            .where(ProductVariant.product_id == p.id)
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.id.asc()),
+        ).all(),
     )
+    upsert_product_price_snapshot(db, p)
+    db.commit()
     return product_public(p, variants_for_detail=vrows if vrows else None)
 
 
@@ -621,3 +652,142 @@ def admin_delete_promo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Promo not found")
     db.delete(row)
     db.commit()
+
+
+def _validate_admin_bundle_items(db: Session, items: list[AdminBundleItemIn]) -> None:
+    seen: set[tuple[UUID, str]] = set()
+    pids = {it.product_id for it in items}
+    need_v = product_ids_requiring_variant(db, pids)
+    for it in items:
+        p = db.get(Product, it.product_id)
+        if p is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown product in bundle")
+        if getattr(p, "is_gift_card", False):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bundles cannot include gift cards")
+        key = (it.product_id, str(it.variant_id or ""))
+        if key in seen:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Duplicate product/variant in bundle; use quantity on a single row",
+            )
+        seen.add(key)
+        if p.id in need_v:
+            if it.variant_id is None:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Select a variant for bundle item: {p.name}")
+            v = db.get(ProductVariant, it.variant_id)
+            if v is None or v.product_id != p.id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid bundle variant")
+        elif it.variant_id is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{p.name} has no variants; omit variant_id")
+
+
+@router.get("/product-bundles", response_model=list[ProductBundleListRow])
+def admin_list_product_bundles(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> list[ProductBundleListRow]:
+    rows = list(
+        db.scalars(
+            select(ProductBundle)
+            .options(selectinload(ProductBundle.items))
+            .order_by(ProductBundle.sort_order.asc(), ProductBundle.name.asc()),
+        ).all(),
+    )
+    return [product_bundle_list_row(db, b) for b in rows]
+
+
+@router.post("/product-bundles", response_model=ProductBundlePublic, status_code=status.HTTP_201_CREATED)
+def admin_create_product_bundle(
+    body: ProductBundleCreateBody,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> ProductBundlePublic:
+    _validate_admin_bundle_items(db, list(body.items))
+    slug = (body.slug.strip() if body.slug else None) or None
+    if slug == "":
+        slug = None
+    b = ProductBundle(
+        name=body.name.strip(),
+        slug=slug,
+        description=(body.description.strip() if body.description else None) or None,
+        bundle_price=Decimal(str(body.bundle_price)),
+        active=bool(body.active),
+        sort_order=int(body.sort_order),
+    )
+    db.add(b)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bundle slug already in use") from None
+    items_sorted = sorted(enumerate(body.items), key=lambda x: (x[1].sort_order, x[0]))
+    for i, (_idx, it) in enumerate(items_sorted):
+        db.add(
+            ProductBundleItem(
+                bundle_id=b.id,
+                product_id=it.product_id,
+                variant_id=it.variant_id,
+                quantity=int(it.quantity),
+                sort_order=int(it.sort_order) if it.sort_order != 0 else i,
+            ),
+        )
+    db.commit()
+    db.refresh(b)
+    b2 = db.scalar(select(ProductBundle).where(ProductBundle.id == b.id).options(selectinload(ProductBundle.items)))
+    assert b2 is not None
+    return product_bundle_public(db, b2)
+
+
+@router.put("/product-bundles/{bundle_id}", response_model=ProductBundlePublic)
+def admin_update_product_bundle(
+    bundle_id: UUID,
+    body: ProductBundleUpdateBody,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> ProductBundlePublic:
+    b = db.scalar(select(ProductBundle).where(ProductBundle.id == bundle_id).options(selectinload(ProductBundle.items)))
+    if b is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bundle not found")
+    data = body.model_dump(exclude_unset=True)
+    items_in = data.pop("items", None)
+    if items_in is not None:
+        parsed = [AdminBundleItemIn.model_validate(x) for x in items_in]
+        _validate_admin_bundle_items(db, parsed)
+        for row in list(b.items):
+            db.delete(row)
+        db.flush()
+        for i, it in enumerate(sorted(parsed, key=lambda x: (x.sort_order, str(x.product_id)))):
+            db.add(
+                ProductBundleItem(
+                    bundle_id=b.id,
+                    product_id=it.product_id,
+                    variant_id=it.variant_id,
+                    quantity=int(it.quantity),
+                    sort_order=int(it.sort_order) if it.sort_order else i,
+                ),
+            )
+    if "name" in data and data["name"] is not None:
+        b.name = str(data["name"]).strip()
+    if "description" in data:
+        d = data["description"]
+        b.description = (str(d).strip() if d else None) or None
+    if "bundle_price" in data and data["bundle_price"] is not None:
+        b.bundle_price = Decimal(str(data["bundle_price"]))
+    if "active" in data and data["active"] is not None:
+        b.active = bool(data["active"])
+    if "sort_order" in data and data["sort_order"] is not None:
+        b.sort_order = int(data["sort_order"])
+    if "slug" in data:
+        s = data["slug"]
+        slug = (str(s).strip() if s else None) or None
+        if slug == "":
+            slug = None
+        b.slug = slug
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bundle slug already in use") from None
+    b2 = db.scalar(select(ProductBundle).where(ProductBundle.id == bundle_id).options(selectinload(ProductBundle.items)))
+    assert b2 is not None
+    return product_bundle_public(db, b2)

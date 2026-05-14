@@ -183,6 +183,9 @@ def apply_runtime_schema_patches() -> None:
             text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmation_email_sent_at TIMESTAMPTZ;"),
         )
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(120);"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_hazardous BOOLEAN NOT NULL DEFAULT false;"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS minimum_age SMALLINT NULL;"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS compliance_note TEXT NULL;"))
         conn.execute(
             text(
                 """
@@ -196,6 +199,101 @@ def apply_runtime_schema_patches() -> None:
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(120);"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;"))
         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;"))
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'products') THEN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = current_schema() AND table_name = 'products' AND column_name = 'a_plus_modules'
+                        ) THEN
+                            ALTER TABLE products ADD COLUMN a_plus_modules JSONB;
+                        END IF;
+                    END IF;
+                END $$;
+                """
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS product_price_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                    day DATE NOT NULL,
+                    unit_price NUMERIC(12, 2) NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    CONSTRAINT uq_product_price_snapshots_product_day UNIQUE (product_id, day)
+                );
+                CREATE INDEX IF NOT EXISTS ix_product_price_snapshots_product_id ON product_price_snapshots(product_id);
+                CREATE INDEX IF NOT EXISTS ix_product_price_snapshots_day ON product_price_snapshots(day);
+                """
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS product_bundles (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(200) NOT NULL,
+                    slug VARCHAR(160),
+                    description TEXT,
+                    bundle_price NUMERIC(12, 2) NOT NULL,
+                    active BOOLEAN NOT NULL DEFAULT true,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    CONSTRAINT uq_product_bundles_slug UNIQUE (slug)
+                );
+                CREATE INDEX IF NOT EXISTS ix_product_bundles_active_sort ON product_bundles (active, sort_order);
+                CREATE TABLE IF NOT EXISTS product_bundle_items (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    bundle_id UUID NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
+                    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                    variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE,
+                    quantity INTEGER NOT NULL DEFAULT 1,
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS ix_product_bundle_items_bundle_id ON product_bundle_items(bundle_id);
+                """
+            ),
+        )
+        conn.execute(text("ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS bundle_id UUID;"))
+        conn.execute(text("ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS bundle_group_id UUID;"))
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cart_items_bundle_id_fkey') THEN
+                        ALTER TABLE cart_items
+                            ADD CONSTRAINT cart_items_bundle_id_fkey
+                            FOREIGN KEY (bundle_id) REFERENCES product_bundles(id) ON DELETE SET NULL;
+                    END IF;
+                END $$;
+                """
+            ),
+        )
+        conn.execute(text("DROP INDEX IF EXISTS uq_cart_user_product_no_variant;"))
+        conn.execute(text("DROP INDEX IF EXISTS uq_cart_user_product_with_variant;"))
+        conn.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_plain_no_variant
+                    ON cart_items (user_id, product_id)
+                    WHERE variant_id IS NULL AND bundle_group_id IS NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_plain_with_variant
+                    ON cart_items (user_id, product_id, variant_id)
+                    WHERE variant_id IS NOT NULL AND bundle_group_id IS NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_bundle_no_variant
+                    ON cart_items (user_id, product_id, bundle_group_id)
+                    WHERE variant_id IS NULL AND bundle_group_id IS NOT NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_bundle_with_variant
+                    ON cart_items (user_id, product_id, variant_id, bundle_group_id)
+                    WHERE variant_id IS NOT NULL AND bundle_group_id IS NOT NULL;
+                """
+            ),
+        )
 
 
 class Base(DeclarativeBase):

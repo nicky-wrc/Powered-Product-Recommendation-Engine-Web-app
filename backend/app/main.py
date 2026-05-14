@@ -22,6 +22,9 @@ from app.models import (
     ProductQuestion,
     ProductReview,
     ProductVariant,
+    ProductBundle,
+    ProductBundleItem,
+    ProductPriceSnapshot,
     PromoCode,
     Recommendation,
     User,
@@ -38,6 +41,7 @@ from app.routers import (
     loyalty,
     orders,
     payments,
+    product_bundles,
     products,
     promos,
     recommendations,
@@ -110,6 +114,7 @@ app.include_router(health.router)
 app.include_router(auth.router, prefix="/api")
 app.include_router(addresses.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
+app.include_router(product_bundles.router, prefix="/api")
 app.include_router(cart.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
 app.include_router(promos.router, prefix="/api")
