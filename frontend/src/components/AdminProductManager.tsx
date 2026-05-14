@@ -466,7 +466,7 @@ export function AdminProductManager({ token, mode }: Props) {
       const image_url = galleryUrls[0] ?? null;
       const variantsPayload = variantUpsertsFromDraft(createVariants);
       const tierOpts =
-        flash !== "empty" && flash !== "incomplete"
+        flash !== "empty"
           ? { listPrice: price, salePrice: flash.sale_price ?? null, saleEndsAt: flash.sale_ends_at ?? null }
           : { listPrice: price, salePrice: null as number | null, saleEndsAt: null as string | null };
       const tiersParsed = volumeTiersFromDraft(createVolumeTiers, tierOpts);
@@ -551,7 +551,7 @@ export function AdminProductManager({ token, mode }: Props) {
         throw new Error("กรุณากรอกราคาให้ถูกต้อง");
       }
       const tierOpts =
-        flash !== "empty" && flash !== "incomplete"
+        flash !== "empty"
           ? { listPrice, salePrice: flash.sale_price ?? null, saleEndsAt: flash.sale_ends_at ?? null }
           : { listPrice, salePrice: null as number | null, saleEndsAt: null as string | null };
       const flashPart =
