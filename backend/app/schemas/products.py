@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -10,6 +10,81 @@ from app.services.brand_slug import slugify_brand
 from app.schemas.reviews import ProductReviewEligibility, ReviewSummary
 from app.services.product_codes import normalize_product_code
 from app.services.product_pricing import effective_unit_price, flash_sale_active
+
+
+class VolumeTierPublic(BaseModel):
+    min_qty: int
+    unit_price: float
+
+
+class VolumeTierRow(BaseModel):
+    min_qty: int = Field(ge=2, le=1_000_000)
+    unit_price: float = Field(ge=0)
+
+
+def normalize_volume_tiers_for_db(rows: list[VolumeTierRow]) -> list[dict[str, object]]:
+    cleaned = sorted(rows, key=lambda r: r.min_qty)
+    return [{"min_qty": r.min_qty, "unit_price": float(round(r.unit_price, 2))} for r in cleaned]
+
+
+def validate_volume_tiers_against_cap(*, cap: float, tiers: list[VolumeTierRow]) -> None:
+    if len(tiers) > 12:
+        raise ValueError("At most 12 volume tiers")
+    mins = [t.min_qty for t in tiers]
+    if len(mins) != len(set(mins)):
+        raise ValueError("Duplicate min_qty in volume tiers")
+    c = float(cap)
+    for t in tiers:
+        if t.unit_price > c + 1e-6:
+            raise ValueError(
+                f"Volume tier (min {t.min_qty}) unit_price cannot exceed applicable unit cap {c:.2f}",
+            )
+
+
+def volume_tier_price_cap_from_create_body(body: "ProductCreate") -> float:
+    """Upper bound for tier unit_price: min(parent effective unit, cheapest variant)."""
+    lp = float(body.price)
+    sp = body.sale_price
+    ends = body.sale_ends_at
+    parent_eff = lp
+    if sp is not None and ends is not None and sp < lp and ends > datetime.now(timezone.utc):
+        parent_eff = float(sp)
+    if body.variants:
+        vmin = min(float(v.price) for v in body.variants)
+        return min(parent_eff, vmin)
+    return parent_eff
+
+
+def volume_tier_price_cap_for_product(p: Product, variant_unit_prices: list[float] | None) -> float:
+    parent_eff = float(effective_unit_price(p))
+    if variant_unit_prices:
+        return min(parent_eff, min(variant_unit_prices))
+    return parent_eff
+
+
+def normalize_volume_tiers_public(raw: object) -> list[VolumeTierPublic] | None:
+    if not raw or not isinstance(raw, list):
+        return None
+    out: list[VolumeTierPublic] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        mq = row.get("min_qty")
+        up = row.get("unit_price")
+        if mq is None or up is None:
+            continue
+        try:
+            mqi = int(mq)
+            upf = float(up)
+        except (TypeError, ValueError):
+            continue
+        if mqi < 2 or upf < 0:
+            continue
+        out.append(VolumeTierPublic(min_qty=mqi, unit_price=round(upf, 2)))
+    if not out:
+        return None
+    out.sort(key=lambda x: x.min_qty)
+    return out
 
 
 class ProductVariantPublic(BaseModel):
@@ -51,6 +126,7 @@ class ProductPublic(BaseModel):
     is_hazardous: bool = False
     minimum_age: int | None = None
     compliance_note: str | None = None
+    volume_tiers: list[VolumeTierPublic] | None = None
 
 
 def _compliance_public_fields(p: Product) -> dict[str, object]:
@@ -61,6 +137,10 @@ def _compliance_public_fields(p: Product) -> dict[str, object]:
         "minimum_age": int(ma) if ma is not None else None,
         "compliance_note": (str(note).strip() if note else None) or None,
     }
+
+
+def _volume_tiers_public_fields(p: Product) -> dict[str, object]:
+    return {"volume_tiers": normalize_volume_tiers_public(getattr(p, "volume_tiers", None))}
 
 
 def _product_seo_fields(p: Product) -> dict[str, str | None]:
@@ -132,6 +212,7 @@ def product_public(
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
             **_a_plus_public_fields(p),
             **_compliance_public_fields(p),
+            **_volume_tiers_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -159,6 +240,7 @@ def product_public(
             is_gift_card=bool(getattr(p, "is_gift_card", False)),
             **_a_plus_public_fields(p),
             **_compliance_public_fields(p),
+            **_volume_tiers_public_fields(p),
             **_product_seo_fields(p),
         )
 
@@ -186,6 +268,7 @@ def product_public(
         is_gift_card=bool(getattr(p, "is_gift_card", False)),
         **_a_plus_public_fields(p),
         **_compliance_public_fields(p),
+        **_volume_tiers_public_fields(p),
         **_product_seo_fields(p),
     )
 
@@ -289,6 +372,7 @@ class ProductCreate(BaseModel):
     is_hazardous: bool = False
     minimum_age: int | None = Field(None, ge=1, le=99)
     compliance_note: str | None = Field(None, max_length=2000)
+    volume_tiers: list[VolumeTierRow] | None = None
 
     @field_validator("product_code", mode="before")
     @classmethod
@@ -327,6 +411,14 @@ class ProductCreate(BaseModel):
             raise ValueError("sale_price and sale_ends_at must both be set, or both omitted")
         if has_s and self.sale_price is not None and self.sale_price >= self.price:
             raise ValueError("sale_price must be less than list price")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_volume_tiers_create(self) -> ProductCreate:
+        if not self.volume_tiers:
+            return self
+        cap = volume_tier_price_cap_from_create_body(self)
+        validate_volume_tiers_against_cap(cap=cap, tiers=list(self.volume_tiers))
         return self
 
     @field_validator("image_url", "video_url", mode="before")
@@ -394,6 +486,7 @@ class ProductUpdate(BaseModel):
     is_hazardous: bool | None = None
     minimum_age: int | None = Field(None, ge=1, le=99)
     compliance_note: str | None = Field(None, max_length=2000)
+    volume_tiers: list[VolumeTierRow] | None = None
 
     @field_validator("product_code", mode="before")
     @classmethod

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, startTransition, type ReactNode } from "react";
 
-type NavIconName = "dashboard" | "plus" | "stock" | "orders";
+type NavIconName = "dashboard" | "plus" | "stock" | "orders" | "report";
 
 type NavItem = { href: string; label: string; icon: NavIconName };
 
@@ -21,6 +21,7 @@ const NAV: NavGroup[] = [
       { href: "/admin/catalog", label: "เพิ่มสินค้าใหม่", icon: "plus" },
       { href: "/admin/inventory", label: "สต็อกสินค้า", icon: "stock" },
       { href: "/admin/orders", label: "คำสั่งซื้อ & ขนส่ง", icon: "orders" },
+      { href: "/admin/price-match", label: "รายงานราคา", icon: "report" },
     ],
   },
 ];
@@ -42,6 +43,17 @@ function NavIcon({ name }: { name: NavIconName }) {
     return (
       <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+      </svg>
+    );
+  }
+  if (name === "report") {
+    return (
+      <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M12 6v12m3-9H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
       </svg>
     );
   }
@@ -83,6 +95,15 @@ function breadcrumbFor(pathname: string): { title: string; crumbs: { label: stri
       crumbs: [
         { label: "แอดมิน", href: "/admin" },
         { label: "สต็อก" },
+      ],
+    };
+  }
+  if (pathname.startsWith("/admin/price-match")) {
+    return {
+      title: "รายงานราคา",
+      crumbs: [
+        { label: "แอดมิน", href: "/admin" },
+        { label: "Price match" },
       ],
     };
   }

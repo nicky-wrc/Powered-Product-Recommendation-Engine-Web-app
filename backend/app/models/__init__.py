@@ -1,6 +1,8 @@
 from app.models.cart_item import CartItem
+from app.models.gift_registry import GiftRegistry, GiftRegistryItem
 from app.models.interaction import Interaction
 from app.models.order import Order, OrderItem
+from app.models.price_match_report import PriceMatchReport
 from app.models.product import Product
 from app.models.product_bundle import ProductBundle, ProductBundleItem
 from app.models.product_price_snapshot import ProductPriceSnapshot
@@ -34,4 +36,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "CartItem",
+    "PriceMatchReport",
+    "GiftRegistry",
+    "GiftRegistryItem",
 ]

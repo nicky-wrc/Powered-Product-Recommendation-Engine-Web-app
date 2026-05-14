@@ -68,6 +68,12 @@ export function ProductActions({ product }: Props) {
       <p className="text-xs text-stone-500 dark:text-stone-400">
         Signed-in: cart syncs to the server. Guests: items stay in this browser until you log in.
       </p>
+      {!product.is_gift_card && product.volume_tiers && product.volume_tiers.length > 0 ? (
+        <p className="text-[11px] leading-snug text-teal-900/90 dark:text-teal-200/90">
+          Quantity pricing: totals for this item (same options) combine toward lower per-unit prices — see the tiers on
+          this page.
+        </p>
+      ) : null}
       {hasVariants ? (
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-stone-700 dark:text-stone-300">ตัวเลือกสินค้า</span>

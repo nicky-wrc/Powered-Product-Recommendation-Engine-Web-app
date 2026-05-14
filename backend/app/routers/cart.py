@@ -15,7 +15,7 @@ from app.models.product_variant import ProductVariant
 from app.models.user import User
 from app.schemas.cart import CartItemAdd, CartItemPatch, CartLineResponse, CartResponse
 from app.schemas.products import ProductPublic, product_public
-from app.services.checkout_fulfillment import CheckoutLineSpec, load_checkout_pricing
+from app.services.product_pricing import effective_unit_price, volume_tiered_unit_price
 from app.services.product_variants import product_ids_requiring_variant, variant_aggregates_for_product_ids
 
 router = APIRouter(prefix="/cart", tags=["cart"])
@@ -45,11 +45,11 @@ def _line_list_unit_cart(
     p: Product,
     variant_id: UUID | None,
     agg: dict,
-) -> tuple[ProductPublic, float, ProductVariant | None]:
+    tier_quantity: int,
+) -> tuple[ProductPublic, float, float, ProductVariant | None]:
     pa = agg.get(p.id)
     pub = product_public(p, variant_aggregate=pa if pa and pa[0] > 0 else None)
     v: ProductVariant | None = None
-    unit = float(pub.price)
     if variant_id is not None:
         v = db.get(ProductVariant, variant_id)
         if v is None or v.product_id != p.id:
@@ -57,9 +57,20 @@ def _line_list_unit_cart(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "Cart references missing variant; clear cart and re-add.",
             )
-        unit = float(v.price)
-        pub = pub.model_copy(update={"price": unit, "stock": v.stock})
-    return pub, unit, v
+        base_dec = v.price
+        pub = pub.model_copy(update={"price": float(base_dec), "stock": v.stock})
+    else:
+        base_dec = effective_unit_price(p)
+    list_u = float(base_dec)
+    tiered = float(
+        volume_tiered_unit_price(
+            base=base_dec,
+            tier_quantity=tier_quantity,
+            tiers_raw=getattr(p, "volume_tiers", None),
+            is_gift_card=bool(getattr(p, "is_gift_card", False)),
+        ),
+    )
+    return pub, tiered, list_u, v
 
 
 def _cart_response(db: Session, user_id: UUID) -> CartResponse:
@@ -72,10 +83,14 @@ def _cart_response(db: Session, user_id: UUID) -> CartResponse:
     rows = db.execute(stmt).all()
     pids = [p.id for _ci, p in rows]
     agg = variant_aggregates_for_product_ids(db, pids)
+    tot: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
+    for ci, _p in rows:
+        tot[(ci.product_id, ci.variant_id)] += ci.quantity
     items: list[CartLineResponse] = []
     count = 0
     for ci, p in rows:
-        pub, unit, v = _line_list_unit_cart(db, p, ci.variant_id, agg)
+        tq = tot[(ci.product_id, ci.variant_id)]
+        pub, unit, list_u, v = _line_list_unit_cart(db, p, ci.variant_id, agg, tq)
         bname = None
         if ci.bundle_id:
             b = db.get(ProductBundle, ci.bundle_id)
@@ -87,7 +102,7 @@ def _cart_response(db: Session, user_id: UUID) -> CartResponse:
                 variant_id=ci.variant_id,
                 variant_label=v.label if v else None,
                 unit_price=unit,
-                list_unit_price=unit,
+                list_unit_price=list_u,
                 bundle_id=ci.bundle_id,
                 bundle_group_id=ci.bundle_group_id,
                 bundle_name=bname,

@@ -41,6 +41,8 @@ class Product(Base):
     meta_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Amazon-style A+ modules: JSON list of { type: banner | feature_list | image_text, ... }
     a_plus_modules: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
+    # Quantity breaks: [{ "min_qty": 3, "unit_price": "12.00" }, ...] — min_qty ≥ 2 ; unit_price ≤ list at time of save
+    volume_tiers: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
 
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",

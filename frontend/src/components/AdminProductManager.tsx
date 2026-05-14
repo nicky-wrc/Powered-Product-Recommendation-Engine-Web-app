@@ -22,6 +22,7 @@ import {
   type Product,
   type ProductGalleryRow,
   type AdminProductVariantUpsert,
+  type VolumeTier,
 } from "@/lib/api";
 import Image from "next/image";
 
@@ -154,6 +155,59 @@ type CreatePendingImage = { key: string; url: string };
 
 type VariantDraftRow = { key: string; serverId?: string; label: string; price: string; stock: string };
 
+type VolumeTierDraftRow = { key: string; min_qty: string; unit_price: string };
+
+function newVolumeTierRowKey(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `vt-${Date.now()}-${Math.random()}`;
+}
+
+function volumeTiersFromDraft(
+  rows: VolumeTierDraftRow[],
+  opts: { listPrice: number; salePrice: number | null | undefined; saleEndsAt: string | null | undefined },
+): VolumeTier[] {
+  const lp = opts.listPrice;
+  if (!Number.isFinite(lp) || lp < 0) {
+    throw new Error("ราคาปกติไม่ถูกต้อง — ตรวจสอบช่องราคา");
+  }
+  let cap = lp;
+  const sp = opts.salePrice;
+  const ends = opts.saleEndsAt;
+  if (sp != null && Number.isFinite(sp) && ends && sp < lp) {
+    const endMs = new Date(ends).getTime();
+    if (!Number.isNaN(endMs) && endMs > Date.now()) {
+      cap = Math.min(cap, sp);
+    }
+  }
+  const out: VolumeTier[] = [];
+  const seenMin = new Set<number>();
+  for (const r of rows) {
+    const mqS = r.min_qty.trim();
+    const upS = r.unit_price.trim();
+    if (!mqS && !upS) continue;
+    const mq = Math.trunc(Number(mqS));
+    const up = Number(upS);
+    if (!Number.isFinite(mq) || mq < 2) {
+      throw new Error("จำนวนขั้นต่ำของแต่ละเทียร์ต้องเป็นจำนวนเต็ม ≥ 2");
+    }
+    if (!Number.isFinite(up) || up < 0) {
+      throw new Error("ราคาต่อหน่วยของเทียร์ต้องเป็นตัวเลข ≥ 0");
+    }
+    if (up > cap + 1e-6) {
+      throw new Error(`ราคาเทียร์ต้องไม่เกินเพดานที่ใช้คำนวณ (~$${cap.toFixed(2)}) — ถ้ามี variant ให้ตั้งเทียร์ไม่เกินราคาถูกที่สุด`);
+    }
+    if (seenMin.has(mq)) {
+      throw new Error(`ซ้ำค่า min_qty ${mq}`);
+    }
+    seenMin.add(mq);
+    out.push({ min_qty: mq, unit_price: Math.round(up * 100) / 100 });
+  }
+  out.sort((a, b) => a.min_qty - b.min_qty);
+  if (out.length > 12) {
+    throw new Error("อย่างมาก 12 เทียร์");
+  }
+  return out;
+}
+
 function variantUpsertsFromDraft(rows: VariantDraftRow[]): AdminProductVariantUpsert[] {
   const variantParsed = rows
     .map((r) => {
@@ -203,10 +257,12 @@ export function AdminProductManager({ token, mode }: Props) {
   /** รูปที่จะผูกกับสินค้าใหม่ (เรียงลำดับ = แกลเลอรี่; รูปแรก = ปก) — ก่อนกดสร้างสินค้า */
   const [createGallery, setCreateGallery] = useState<CreatePendingImage[]>([]);
   const [createVariants, setCreateVariants] = useState<VariantDraftRow[]>([]);
+  const [createVolumeTiers, setCreateVolumeTiers] = useState<VolumeTierDraftRow[]>([]);
   const [createUrlDraft, setCreateUrlDraft] = useState("");
   const [form, setForm] = useState(emptyDraft);
   const [editGallery, setEditGallery] = useState<ProductGalleryRow[]>([]);
   const [editVariants, setEditVariants] = useState<VariantDraftRow[]>([]);
+  const [editVolumeTiers, setEditVolumeTiers] = useState<VolumeTierDraftRow[]>([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
   const [galleryBusy, setGalleryBusy] = useState(false);
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
@@ -314,6 +370,15 @@ export function AdminProductManager({ token, mode }: Props) {
       compliance_note: prod.compliance_note ?? "",
     });
     editAPlusJsonBaselineRef.current = prod.a_plus_modules?.length ? JSON.stringify(prod.a_plus_modules, null, 2) : "";
+    setEditVolumeTiers(
+      prod.volume_tiers?.length
+        ? prod.volume_tiers.map((t) => ({
+            key: newVolumeTierRowKey(),
+            min_qty: String(t.min_qty),
+            unit_price: String(t.unit_price),
+          }))
+        : [],
+    );
     setEditGallery([...detail.images].sort((a, b) => a.sort_order - b.sort_order));
     setEditVariants(
       (prod.variants ?? []).map((v) => ({
@@ -352,6 +417,7 @@ export function AdminProductManager({ token, mode }: Props) {
     editAPlusJsonBaselineRef.current = p.a_plus_modules?.length ? JSON.stringify(p.a_plus_modules, null, 2) : "";
     setEditGallery([]);
     setEditVariants([]);
+    setEditVolumeTiers([]);
     setGalleryLoading(true);
     setMsg(null);
     setErr(null);
@@ -376,6 +442,7 @@ export function AdminProductManager({ token, mode }: Props) {
     setForm(emptyDraft);
     setEditGallery([]);
     setEditVariants([]);
+    setEditVolumeTiers([]);
     setGalleryLoading(false);
   }
 
@@ -398,6 +465,11 @@ export function AdminProductManager({ token, mode }: Props) {
       const galleryUrls = createGallery.map((x) => x.url.trim()).filter(Boolean);
       const image_url = galleryUrls[0] ?? null;
       const variantsPayload = variantUpsertsFromDraft(createVariants);
+      const tierOpts =
+        flash !== "empty" && flash !== "incomplete"
+          ? { listPrice: price, salePrice: flash.sale_price ?? null, saleEndsAt: flash.sale_ends_at ?? null }
+          : { listPrice: price, salePrice: null as number | null, saleEndsAt: null as string | null };
+      const tiersParsed = volumeTiersFromDraft(createVolumeTiers, tierOpts);
       const aPlus = parseAPlusModulesJson(createForm.a_plus_json);
       const minAge = parseMinimumAge(createForm.minimum_age);
       const created = await adminCreateProduct(token, {
@@ -419,6 +491,7 @@ export function AdminProductManager({ token, mode }: Props) {
         ...(aPlus != null ? { a_plus_modules: aPlus } : {}),
         ...(flash === "empty" ? {} : flash),
         ...(variantsPayload.length > 0 ? { variants: variantsPayload } : {}),
+        ...(tiersParsed.length > 0 ? { volume_tiers: tiersParsed } : {}),
       });
       let galleryError: string | null = null;
       try {
@@ -431,6 +504,7 @@ export function AdminProductManager({ token, mode }: Props) {
       setCreateForm(emptyDraft);
       setCreateGallery([]);
       setCreateVariants([]);
+      setCreateVolumeTiers([]);
       setCreateUrlDraft("");
       if (galleryError) {
         setErr(
@@ -473,6 +547,13 @@ export function AdminProductManager({ token, mode }: Props) {
       if (flash !== "empty" && flash.sale_price != null && Number.isFinite(listPrice) && flash.sale_price >= listPrice) {
         throw new Error("ราคา Flash deal ต้องต่ำกว่าราคาปกติ");
       }
+      if (!Number.isFinite(listPrice)) {
+        throw new Error("กรุณากรอกราคาให้ถูกต้อง");
+      }
+      const tierOpts =
+        flash !== "empty" && flash !== "incomplete"
+          ? { listPrice, salePrice: flash.sale_price ?? null, saleEndsAt: flash.sale_ends_at ?? null }
+          : { listPrice, salePrice: null as number | null, saleEndsAt: null as string | null };
       const flashPart =
         flash === "empty" ? { sale_price: null as number | null, sale_ends_at: null as string | null } : flash;
       const body: Parameters<typeof adminUpdateProduct>[2] = {
@@ -503,6 +584,7 @@ export function AdminProductManager({ token, mode }: Props) {
       }
 
       body.variants = variantUpsertsFromDraft(editVariants);
+      body.volume_tiers = volumeTiersFromDraft(editVolumeTiers, tierOpts);
 
       await adminUpdateProduct(token, editingId, body);
       setMsg("บันทึกการแก้ไขแล้ว");
@@ -849,6 +931,78 @@ export function AdminProductManager({ token, mode }: Props) {
                 className="min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-3 py-2.5 text-sm tabular-nums shadow-sm outline-none transition [color-scheme:light] focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100 dark:[color-scheme:dark]"
               />
             </label>
+            <div className="rounded-lg border border-dashed border-teal-300/80 bg-teal-50/40 p-3 dark:border-teal-900/50 dark:bg-teal-950/25 sm:col-span-2">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-teal-950 dark:text-teal-100">
+                  ราคาตามจำนวน (quantity tiers) — ไม่บังคับ
+                </p>
+                <button
+                  type="button"
+                  disabled={busyId === "__create__" || uploading !== null}
+                  onClick={() =>
+                    setCreateVolumeTiers((rows) => [
+                      ...rows,
+                      { key: newVolumeTierRowKey(), min_qty: "", unit_price: "" },
+                    ])
+                  }
+                  className="rounded-lg border border-teal-400/80 bg-white/90 px-2 py-1 text-[11px] font-semibold text-teal-900 dark:border-teal-700 dark:bg-teal-950/50 dark:text-teal-100"
+                >
+                  + เพิ่มเทียร์
+                </button>
+              </div>
+              <p className="mb-2 text-[11px] text-teal-900/80 dark:text-teal-200/80">
+                min qty ≥ 2 · ราคาต่อชิ้นต้องไม่เกินราคาปกติ (หรือราคาโปรถ้า Flash ยัง active) · รวมจำนวนในรายการ SKU เดียวกันในตะกร้าจะใช้เทียร์เดียวกัน
+              </p>
+              {createVolumeTiers.length === 0 ? (
+                <p className="text-[11px] text-stone-600 dark:text-stone-400">เว้นว่าง = ไม่มีส่วนลดตามจำนวน</p>
+              ) : (
+                <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-0.5">
+                  {createVolumeTiers.map((row, idx) => (
+                    <li
+                      key={row.key}
+                      className="flex flex-wrap items-end gap-2 rounded-lg border border-teal-200/90 bg-white/80 px-2 py-2 dark:border-teal-900/50 dark:bg-zinc-950/80"
+                    >
+                      <span className="self-center text-[10px] font-medium tabular-nums text-stone-400">{idx + 1}.</span>
+                      <label className="w-24">
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400">min qty</span>
+                        <input
+                          inputMode="numeric"
+                          value={row.min_qty}
+                          onChange={(e) =>
+                            setCreateVolumeTiers((rs) =>
+                              rs.map((x) => (x.key === row.key ? { ...x, min_qty: e.target.value } : x)),
+                            )
+                          }
+                          placeholder="≥ 2"
+                          className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <label className="min-w-[6rem] flex-1">
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400">ราคา/ชิ้น</span>
+                        <input
+                          inputMode="decimal"
+                          value={row.unit_price}
+                          onChange={(e) =>
+                            setCreateVolumeTiers((rs) =>
+                              rs.map((x) => (x.key === row.key ? { ...x, unit_price: e.target.value } : x)),
+                            )
+                          }
+                          className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busyId === "__create__"}
+                        onClick={() => setCreateVolumeTiers((rs) => rs.filter((x) => x.key !== row.key))}
+                        className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                      >
+                        ลบ
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <label className="block text-xs font-medium text-stone-700 dark:text-stone-300 sm:col-span-2">
               หมวดหมู่ — เลือกจากรายการหรือพิมพ์ใหม่
               <input
@@ -1335,6 +1489,80 @@ export function AdminProductManager({ token, mode }: Props) {
                           className="min-w-0 flex-1 rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm tabular-nums outline-none transition [color-scheme:light] focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 dark:border-zinc-600 dark:bg-zinc-950 dark:text-stone-100 dark:[color-scheme:dark]"
                         />
                       </label>
+                      <div className="rounded-xl border border-dashed border-teal-300/80 bg-teal-50/40 p-3 dark:border-teal-900/50 dark:bg-teal-950/25 sm:col-span-2">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-teal-950 dark:text-teal-100">ราคาตามจำนวน (tiers)</p>
+                          <button
+                            type="button"
+                            disabled={busyId === editingId || uploading !== null}
+                            onClick={() =>
+                              setEditVolumeTiers((rows) => [
+                                ...rows,
+                                { key: newVolumeTierRowKey(), min_qty: "", unit_price: "" },
+                              ])
+                            }
+                            className="rounded-lg border border-teal-400/80 bg-white/90 px-2 py-1 text-[11px] font-semibold text-teal-900 dark:border-teal-700 dark:bg-teal-950/50 dark:text-teal-100"
+                          >
+                            + เพิ่มเทียร์
+                          </button>
+                        </div>
+                        <p className="mb-2 text-[11px] text-teal-900/80 dark:text-teal-200/80">
+                          ลบแถวทั้งหมดแล้วบันทึก = ล้างเทียร์ · min qty ≥ 2
+                        </p>
+                        {editVolumeTiers.length === 0 ? (
+                          <p className="text-[11px] text-stone-600 dark:text-stone-400">
+                            ยังไม่มีแถว — บันทึกในสถานะนี้จะลบเทียร์ทั้งหมดออกจากสินค้า
+                          </p>
+                        ) : (
+                          <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-0.5">
+                            {editVolumeTiers.map((row, idx) => (
+                              <li
+                                key={row.key}
+                                className="flex flex-wrap items-end gap-2 rounded-lg border border-teal-200/90 bg-white/80 px-2 py-2 dark:border-teal-900/50 dark:bg-zinc-950/80"
+                              >
+                                <span className="self-center text-[10px] font-medium tabular-nums text-stone-400">
+                                  {idx + 1}.
+                                </span>
+                                <label className="w-24">
+                                  <span className="text-[10px] text-stone-500 dark:text-stone-400">min qty</span>
+                                  <input
+                                    inputMode="numeric"
+                                    value={row.min_qty}
+                                    onChange={(e) =>
+                                      setEditVolumeTiers((rs) =>
+                                        rs.map((x) => (x.key === row.key ? { ...x, min_qty: e.target.value } : x)),
+                                      )
+                                    }
+                                    placeholder="≥ 2"
+                                    className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                                  />
+                                </label>
+                                <label className="min-w-[6rem] flex-1">
+                                  <span className="text-[10px] text-stone-500 dark:text-stone-400">ราคา/ชิ้น</span>
+                                  <input
+                                    inputMode="decimal"
+                                    value={row.unit_price}
+                                    onChange={(e) =>
+                                      setEditVolumeTiers((rs) =>
+                                        rs.map((x) => (x.key === row.key ? { ...x, unit_price: e.target.value } : x)),
+                                      )
+                                    }
+                                    className="mt-0.5 w-full rounded-lg border border-stone-200 px-2 py-1.5 text-sm tabular-nums dark:border-zinc-600 dark:bg-zinc-950"
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  disabled={busyId === editingId}
+                                  onClick={() => setEditVolumeTiers((rs) => rs.filter((x) => x.key !== row.key))}
+                                  className="rounded border border-rose-200 px-2 py-1 text-[11px] text-rose-700 dark:border-rose-900 dark:text-rose-400"
+                                >
+                                  ลบ
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                       <div className="sm:col-span-2">
                         <input
                           list="admin-category-datalist-edit"

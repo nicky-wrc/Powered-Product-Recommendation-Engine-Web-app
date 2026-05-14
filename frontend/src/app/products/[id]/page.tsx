@@ -14,6 +14,7 @@ import { ProductImageGallery } from "@/components/ProductImageGallery";
 import { FlashSaleCountdown } from "@/components/FlashSaleCountdown";
 import { ProductMediaSpotlightSection } from "@/components/ProductMediaSpotlightSection";
 import { ProductPriceHistorySection } from "@/components/ProductPriceHistorySection";
+import { ProductPriceMatchSection } from "@/components/ProductPriceMatchSection";
 import { ProductPageClosingSection } from "@/components/ProductPageClosingSection";
 import { ProductQaSection } from "@/components/ProductQaSection";
 import { ProductRecommendationGridSection } from "@/components/ProductRecommendationGridSection";
@@ -22,6 +23,7 @@ import { ProductReviewsSection } from "@/components/ProductReviewsSection";
 import { ProductServicePoliciesSection } from "@/components/ProductServicePoliciesSection";
 import { ProductShareRow } from "@/components/ProductShareRow";
 import { ProductSustainabilitySection } from "@/components/ProductSustainabilitySection";
+import { ProductVolumeTiersSection } from "@/components/ProductVolumeTiersSection";
 import { StockAlertCTA } from "@/components/StockAlertCTA";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SustainabilityBadge } from "@/components/SustainabilityBadge";
@@ -208,6 +210,8 @@ export default async function ProductDetailPage({ params }: Props) {
               </span>
             </div>
             <StockAlertCTA product={p} />
+            <ProductVolumeTiersSection product={p} />
+            <ProductPriceMatchSection product={p} />
             <div className="flex gap-3 rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
               <span
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"

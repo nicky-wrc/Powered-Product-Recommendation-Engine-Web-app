@@ -1,5 +1,6 @@
 import math
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.deps import get_current_user, get_current_user_optional
 from app.models.order import Order, OrderItem
+from app.models.price_match_report import PriceMatchReport
 from app.models.product import Product
 from app.models.product_answer import ProductAnswer
 from app.models.product_image import ProductImage
@@ -18,6 +20,7 @@ from app.models.product_question import ProductQuestion
 from app.models.product_review import ProductReview
 from app.models.product_variant import ProductVariant
 from app.models.user import User
+from app.schemas.price_match import PriceMatchReportCreate, PriceMatchReportPublic
 from app.schemas.product_qa import (
     ProductQaListResponse,
     ProductQuestionCreate,
@@ -42,6 +45,7 @@ from app.schemas.reviews import (
 )
 from app.services.bought_together import bought_together_products
 from app.services.product_codes import normalize_product_code
+from app.services.product_pricing import effective_unit_price
 from app.services.product_qa import product_qa_item_public
 from app.services.product_variants import variant_aggregates_for_product_ids
 
@@ -514,6 +518,55 @@ def get_product_price_history(
         period_low=min(lows) if lows else None,
         period_high=max(lows) if lows else None,
     )
+
+
+def _storefront_unit_for_price_match(db: Session, p: Product) -> Decimal:
+    min_v = db.scalar(select(func.min(ProductVariant.price)).where(ProductVariant.product_id == p.id))
+    if min_v is not None:
+        return min_v
+    return effective_unit_price(p)
+
+
+@router.post(
+    "/{product_id}/price-match-reports",
+    response_model=PriceMatchReportPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_price_match_report(
+    product_id: UUID,
+    body: PriceMatchReportCreate,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
+) -> PriceMatchReportPublic:
+    p = db.get(Product, product_id)
+    if p is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
+    reporter_email: str | None
+    if user is None:
+        if body.reporter_email is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "reporter_email is required when not authenticated",
+            )
+        reporter_email = str(body.reporter_email)
+    else:
+        reporter_email = str(body.reporter_email) if body.reporter_email else None
+    snap = _storefront_unit_for_price_match(db, p)
+    row = PriceMatchReport(
+        product_id=product_id,
+        user_id=user.id if user else None,
+        reporter_email=reporter_email,
+        competitor_url=body.competitor_url,
+        reported_price=Decimal(str(round(float(body.reported_price), 2))),
+        currency=(body.currency or "USD")[:8],
+        notes=body.notes,
+        storefront_unit_at_submit=snap,
+        status="pending",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return PriceMatchReportPublic.model_validate(row)
 
 
 @router.get("/by-code/{product_code}", response_model=ProductWithSimilar)

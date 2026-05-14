@@ -40,7 +40,7 @@ export function ProductQaSection({ productId }: Props) {
   const [clientToken, setClientToken] = useState<string | null>(null);
 
   useEffect(() => {
-    setClientToken(getToken());
+    queueMicrotask(() => setClientToken(getToken()));
   }, []);
 
   const load = useCallback(async () => {

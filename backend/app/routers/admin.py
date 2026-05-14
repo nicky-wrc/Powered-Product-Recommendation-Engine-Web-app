@@ -14,6 +14,7 @@ from app.deps import get_admin_user
 from app.image_upload import read_image_upload
 from app.models.interaction import Interaction
 from app.models.order import Order
+from app.models.price_match_report import PriceMatchReport
 from app.models.product import Product
 from app.models.product_answer import ProductAnswer
 from app.models.product_bundle import ProductBundle, ProductBundleItem
@@ -24,6 +25,12 @@ from app.models.product_variant import ProductVariant
 from app.models.promo_code import PromoCode
 from app.models.user import User
 from app.schemas.orders import OrderPublic, order_public
+from app.schemas.price_match import (
+    PriceMatchReportAdminRow,
+    PriceMatchReportAdminUpdate,
+    PriceMatchReportListResponse,
+    PriceMatchReportPublic,
+)
 from app.schemas.product_qa import ProductAnswerBody, ProductQaItemPublic
 from app.schemas.product_bundles import (
     AdminBundleItemIn,
@@ -40,7 +47,11 @@ from app.schemas.products import (
     ProductImageReorderBody,
     ProductPublic,
     ProductUpdate,
+    VolumeTierRow,
+    normalize_volume_tiers_for_db,
     product_public,
+    validate_volume_tiers_against_cap,
+    volume_tier_price_cap_for_product,
 )
 from app.services.product_bundles_public import product_bundle_list_row, product_bundle_public
 from app.services.product_gallery import sync_product_cover
@@ -152,6 +163,11 @@ def create_product(
     _admin: User = Depends(get_admin_user),
 ) -> ProductPublic:
     variants_in = list(body.variants) if body.variants else []
+    tier_store = (
+        normalize_volume_tiers_for_db(list(body.volume_tiers))
+        if body.volume_tiers
+        else None
+    )
     p = Product(
         name=body.name.strip(),
         description=(body.description.strip() if body.description else None) or None,
@@ -171,6 +187,7 @@ def create_product(
         is_hazardous=bool(body.is_hazardous),
         minimum_age=body.minimum_age,
         compliance_note=body.compliance_note,
+        volume_tiers=tier_store,
     )
     _validate_product_flash(p)
     db.add(p)
@@ -222,6 +239,8 @@ def update_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Product not found")
     data = body.model_dump(exclude_unset=True)
     variants_payload = data.pop("variants", None)
+    _tiers_missing = object()
+    volume_tiers_payload = data.pop("volume_tiers", _tiers_missing)
 
     img_count = int(
         db.scalar(select(func.count()).select_from(ProductImage).where(ProductImage.product_id == product_id)) or 0,
@@ -320,6 +339,20 @@ def update_product(
                     ),
                 )
         db.flush()
+    if volume_tiers_payload is not _tiers_missing:
+        if volume_tiers_payload is None or volume_tiers_payload == []:
+            p.volume_tiers = None
+        else:
+            rows = [VolumeTierRow.model_validate(x) for x in volume_tiers_payload]
+            v_prices = [
+                float(v.price)
+                for v in db.scalars(
+                    select(ProductVariant).where(ProductVariant.product_id == product_id),
+                ).all()
+            ]
+            cap = volume_tier_price_cap_for_product(p, v_prices if v_prices else None)
+            validate_volume_tiers_against_cap(cap=cap, tiers=rows)
+            p.volume_tiers = normalize_volume_tiers_for_db(rows)
     db.commit()
     db.refresh(p)
     vrows = list(
@@ -791,3 +824,48 @@ def admin_update_product_bundle(
     b2 = db.scalar(select(ProductBundle).where(ProductBundle.id == bundle_id).options(selectinload(ProductBundle.items)))
     assert b2 is not None
     return product_bundle_public(db, b2)
+
+
+@router.get("/price-match-reports", response_model=PriceMatchReportListResponse)
+def admin_list_price_match_reports(
+    status_filter: str | None = Query(None, description="pending | approved | rejected | adjusted"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> PriceMatchReportListResponse:
+    count_stmt = select(func.count()).select_from(PriceMatchReport)
+    stmt = select(PriceMatchReport).order_by(PriceMatchReport.created_at.desc())
+    if status_filter and status_filter.strip():
+        sf = status_filter.strip().lower()
+        count_stmt = count_stmt.where(PriceMatchReport.status == sf)
+        stmt = stmt.where(PriceMatchReport.status == sf)
+    total = int(db.scalar(count_stmt) or 0)
+    rows = list(db.scalars(stmt.offset(offset).limit(limit)).all())
+    product_ids = {r.product_id for r in rows}
+    names: dict[UUID, str] = {}
+    if product_ids:
+        for pr in db.scalars(select(Product).where(Product.id.in_(product_ids))).all():
+            names[pr.id] = pr.name
+    reports: list[PriceMatchReportAdminRow] = []
+    for r in rows:
+        base = PriceMatchReportPublic.model_validate(r)
+        reports.append(PriceMatchReportAdminRow(**base.model_dump(), product_name=names.get(r.product_id)))
+    return PriceMatchReportListResponse(reports=reports, total=total)
+
+
+@router.patch("/price-match-reports/{report_id}", response_model=PriceMatchReportPublic)
+def admin_patch_price_match_report(
+    report_id: UUID,
+    body: PriceMatchReportAdminUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_admin_user),
+) -> PriceMatchReportPublic:
+    row = db.get(PriceMatchReport, report_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report not found")
+    row.status = body.status
+    row.admin_note = body.admin_note
+    db.commit()
+    db.refresh(row)
+    return PriceMatchReportPublic.model_validate(row)

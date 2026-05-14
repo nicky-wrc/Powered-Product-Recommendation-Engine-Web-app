@@ -317,6 +317,14 @@ export function SiteHeader() {
                     <Link href="/profile" className={dropdownItem} role="menuitem" onClick={() => setAccountOpen(false)}>
                       Profile
                     </Link>
+                    <Link
+                      href="/gift-registries/manage"
+                      className={dropdownItem}
+                      role="menuitem"
+                      onClick={() => setAccountOpen(false)}
+                    >
+                      Gift lists
+                    </Link>
                     <Link href="/addresses" className={dropdownItem} role="menuitem" onClick={() => setAccountOpen(false)}>
                       Addresses
                     </Link>
@@ -429,6 +437,9 @@ export function SiteHeader() {
                   </Link>
                   <Link href="/profile" className={dropdownItem} onClick={closeAll}>
                     Profile
+                  </Link>
+                  <Link href="/gift-registries/manage" className={dropdownItem} onClick={closeAll}>
+                    Gift lists
                   </Link>
                   <Link href="/addresses" className={dropdownItem} onClick={closeAll}>
                     Addresses

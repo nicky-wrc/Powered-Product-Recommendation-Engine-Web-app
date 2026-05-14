@@ -105,7 +105,7 @@ export function ProductReviewsSection({ productId, initialSummary, initialEligib
   const [clientToken, setClientToken] = useState<string | null>(null);
 
   useEffect(() => {
-    setClientToken(getToken());
+    queueMicrotask(() => setClientToken(getToken()));
   }, []);
 
   useEffect(() => {

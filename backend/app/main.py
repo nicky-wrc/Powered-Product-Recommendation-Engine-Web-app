@@ -29,6 +29,9 @@ from app.models import (
     Recommendation,
     User,
     UserAddress,
+    PriceMatchReport,
+    GiftRegistry,
+    GiftRegistryItem,
 )  # noqa: F401
 from app.routers import (
     addresses,
@@ -37,6 +40,7 @@ from app.routers import (
     cart,
     events,
     gift_cards,
+    gift_registries,
     health,
     loyalty,
     orders,
@@ -120,6 +124,7 @@ app.include_router(orders.router, prefix="/api")
 app.include_router(promos.router, prefix="/api")
 app.include_router(loyalty.router, prefix="/api")
 app.include_router(gift_cards.router, prefix="/api")
+app.include_router(gift_registries.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(events.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")

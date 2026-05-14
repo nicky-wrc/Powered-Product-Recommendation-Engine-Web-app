@@ -38,6 +38,12 @@ export type ProductVariant = {
   options?: Record<string, string> | null;
 };
 
+/** Quantity breaks: same line item SKU shares tier totals in cart/checkout. */
+export type VolumeTier = {
+  min_qty: number;
+  unit_price: number;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -72,6 +78,8 @@ export type Product = {
   is_hazardous?: boolean;
   minimum_age?: number | null;
   compliance_note?: string | null;
+  /** Volume / tier unit pricing; applied by total quantity per product + variant in cart. */
+  volume_tiers?: VolumeTier[] | null;
 };
 
 export type ProductPriceHistoryPoint = {
@@ -747,6 +755,224 @@ export async function postProductQuestion(token: string, productId: string, body
   return data.items;
 }
 
+export type PriceMatchReport = {
+  id: string;
+  product_id: string;
+  user_id: string | null;
+  reporter_email: string | null;
+  competitor_url: string | null;
+  reported_price: number;
+  currency: string;
+  notes: string | null;
+  storefront_unit_at_submit: number | null;
+  status: string;
+  admin_note: string | null;
+  created_at: string;
+};
+
+export type PriceMatchReportAdminRow = PriceMatchReport & { product_name?: string | null };
+
+export type PriceMatchReportListResponse = { reports: PriceMatchReportAdminRow[]; total: number };
+
+export type PriceMatchReportCreateBody = {
+  reported_price: number;
+  currency?: string;
+  competitor_url?: string | null;
+  notes?: string | null;
+  reporter_email?: string | null;
+};
+
+export async function postPriceMatchReport(
+  productId: string,
+  body: PriceMatchReportCreateBody,
+  token?: string | null,
+): Promise<PriceMatchReport> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const r = await fetch(`${API_BASE}/api/products/${productId}/price-match-reports`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminListPriceMatchReports(
+  token: string,
+  opts?: { status?: string; limit?: number; offset?: number },
+): Promise<PriceMatchReportListResponse> {
+  const sp = new URLSearchParams();
+  if (opts?.status) sp.set("status_filter", opts.status);
+  if (opts?.limit != null) sp.set("limit", String(opts.limit));
+  if (opts?.offset != null) sp.set("offset", String(opts.offset));
+  const q = sp.toString();
+  const r = await fetch(`${API_BASE}/api/admin/price-match-reports${q ? `?${q}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function adminPatchPriceMatchReport(
+  token: string,
+  reportId: string,
+  body: { status: string; admin_note?: string | null },
+): Promise<PriceMatchReport> {
+  const r = await fetch(`${API_BASE}/api/admin/price-match-reports/${reportId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export type GiftRegistrySummary = {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  event_date: string | null;
+  created_at: string;
+  item_count: number;
+};
+
+export type GiftRegistryItemPublic = {
+  id: string;
+  product_id: string;
+  variant_id: string | null;
+  quantity_requested: number;
+  note: string | null;
+  sort_order: number;
+  product: Product;
+};
+
+export type GiftRegistryDetail = {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  event_date: string | null;
+  created_at: string;
+  owner_display_name: string | null;
+  items: GiftRegistryItemPublic[];
+};
+
+export async function fetchGiftRegistryBySlug(slug: string): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/slug/${encodeURIComponent(slug)}`, {
+    next: { revalidate: 30 },
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function fetchMyGiftRegistries(token: string): Promise<{ registries: GiftRegistrySummary[] }> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/mine`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function fetchGiftRegistryOwned(token: string, registryId: string): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/${registryId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function createGiftRegistry(
+  token: string,
+  body: { title: string; description?: string | null; event_date?: string | null },
+): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function updateGiftRegistry(
+  token: string,
+  registryId: string,
+  body: { title?: string; description?: string | null; event_date?: string | null },
+): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/${registryId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function deleteGiftRegistry(token: string, registryId: string): Promise<void> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/${registryId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (r.status === 204) return;
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+}
+
+export async function addGiftRegistryItem(
+  token: string,
+  registryId: string,
+  body: {
+    product_id: string;
+    variant_id?: string | null;
+    quantity_requested?: number;
+    note?: string | null;
+  },
+): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/${registryId}/items`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
+export async function removeGiftRegistryItem(
+  token: string,
+  registryId: string,
+  itemId: string,
+): Promise<GiftRegistryDetail> {
+  const r = await fetch(`${API_BASE}/api/gift-registries/${registryId}/items/${itemId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error(await readApiErrorMessage(r));
+  return r.json();
+}
+
 export async function postAdminProductQaAnswer(
   token: string,
   productId: string,
@@ -845,6 +1071,8 @@ export type AdminProductCreate = {
   is_hazardous?: boolean;
   minimum_age?: number | null;
   compliance_note?: string | null;
+  /** Quantity breaks; omit or empty = none */
+  volume_tiers?: VolumeTier[] | null;
   /** Optional — create product with SKU rows in one request */
   variants?: AdminProductVariantUpsert[];
 };

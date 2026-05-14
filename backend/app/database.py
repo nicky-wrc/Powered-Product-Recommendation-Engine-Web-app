@@ -186,6 +186,7 @@ def apply_runtime_schema_patches() -> None:
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_hazardous BOOLEAN NOT NULL DEFAULT false;"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS minimum_age SMALLINT NULL;"))
         conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS compliance_note TEXT NULL;"))
+        conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS volume_tiers JSONB NULL;"))
         conn.execute(
             text(
                 """
@@ -291,6 +292,57 @@ def apply_runtime_schema_patches() -> None:
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_cart_bundle_with_variant
                     ON cart_items (user_id, product_id, variant_id, bundle_group_id)
                     WHERE variant_id IS NOT NULL AND bundle_group_id IS NOT NULL;
+                """
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS price_match_reports (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    reporter_email VARCHAR(255) NULL,
+                    competitor_url VARCHAR(2048) NULL,
+                    reported_price NUMERIC(12, 2) NOT NULL,
+                    currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+                    notes TEXT NULL,
+                    storefront_unit_at_submit NUMERIC(12, 2) NULL,
+                    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                    admin_note TEXT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS ix_price_match_reports_product_id ON price_match_reports (product_id);
+                CREATE INDEX IF NOT EXISTS ix_price_match_reports_status ON price_match_reports (status);
+                CREATE INDEX IF NOT EXISTS ix_price_match_reports_created_at ON price_match_reports (created_at DESC);
+                """
+            ),
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS gift_registries (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title VARCHAR(200) NOT NULL,
+                    slug VARCHAR(160) NOT NULL,
+                    description TEXT NULL,
+                    event_date DATE NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    CONSTRAINT uq_gift_registries_slug UNIQUE (slug)
+                );
+                CREATE INDEX IF NOT EXISTS ix_gift_registries_user_id ON gift_registries (user_id);
+                CREATE INDEX IF NOT EXISTS ix_gift_registries_slug_lookup ON gift_registries (slug);
+                CREATE TABLE IF NOT EXISTS gift_registry_items (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    registry_id UUID NOT NULL REFERENCES gift_registries(id) ON DELETE CASCADE,
+                    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                    variant_id UUID NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+                    quantity_requested INTEGER NOT NULL DEFAULT 1,
+                    note VARCHAR(500) NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS ix_gift_registry_items_registry_id ON gift_registry_items (registry_id);
                 """
             ),
         )

@@ -20,7 +20,7 @@ from app.services import gift_cards as gift_svc
 from app.services import loyalty as loyalty_svc
 from app.services import promo_codes as promo_svc
 from app.services.interaction_weights import interaction_weight
-from app.services.product_pricing import effective_unit_price
+from app.services.product_pricing import effective_unit_price, volume_tiered_unit_price
 from app.services.product_variants import product_ids_requiring_variant
 
 GIFT_WRAP_FEE = Decimal("4.99")
@@ -74,12 +74,30 @@ def _line_list_unit(
     products: dict[UUID, Product],
     variants: dict[UUID, ProductVariant],
     need_variants: set[UUID],
+    tier_quantity: int,
 ) -> Decimal:
     p = products[pid]
+    if getattr(p, "is_gift_card", False):
+        if pid in need_variants:
+            assert vid is not None
+            return variants[vid].price
+        return effective_unit_price(p)
     if pid in need_variants:
         assert vid is not None
-        return variants[vid].price
-    return effective_unit_price(p)
+        base = variants[vid].price
+        return volume_tiered_unit_price(
+            base=base,
+            tier_quantity=tier_quantity,
+            tiers_raw=getattr(p, "volume_tiers", None),
+            is_gift_card=False,
+        )
+    base = effective_unit_price(p)
+    return volume_tiered_unit_price(
+        base=base,
+        tier_quantity=tier_quantity,
+        tiers_raw=getattr(p, "volume_tiers", None),
+        is_gift_card=False,
+    )
 
 
 def _bundle_item_counter(db: Session, bundle_id: UUID) -> Counter[tuple[str, str, int]]:
@@ -115,6 +133,10 @@ def load_checkout_pricing(
         if p is None:
             raise CheckoutError(404, "Product not found")
         products[pid] = p
+
+    tot_qty: dict[tuple[UUID, UUID | None], int] = defaultdict(int)
+    for spec in lines:
+        tot_qty[(spec.product_id, spec.variant_id)] += spec.quantity
 
     need_variants = product_ids_requiring_variant(db, pid_list)
 
@@ -157,7 +179,8 @@ def load_checkout_pricing(
             non_bundle.append(spec)
 
     for spec in non_bundle:
-        unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+        tq = tot_qty[(spec.product_id, spec.variant_id)]
+        unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
         subtotal += unit * spec.quantity
         order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
 
@@ -173,7 +196,8 @@ def load_checkout_pricing(
         bids = {g.bundle_id for g in group_lines}
         if len(bids) != 1 or bids == {None}:
             for spec in group_lines:
-                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+                tq = tot_qty[(spec.product_id, spec.variant_id)]
+                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
                 subtotal += unit * spec.quantity
                 order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
             continue
@@ -185,14 +209,16 @@ def load_checkout_pricing(
         )
         if bundle is None or not bundle.active or exp != act:
             for spec in group_lines:
-                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+                tq = tot_qty[(spec.product_id, spec.variant_id)]
+                unit = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
                 subtotal += unit * spec.quantity
                 order_rows.append((spec.product_id, spec.variant_id, spec.quantity, unit))
             continue
 
         line_totals: list[tuple[CheckoutLineSpec, Decimal]] = []
         for spec in sorted(group_lines, key=lambda s: (str(s.product_id), str(s.variant_id or ""))):
-            u = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants)
+            tq = tot_qty[(spec.product_id, spec.variant_id)]
+            u = _line_list_unit(spec.product_id, spec.variant_id, products, variants, need_variants, tq)
             line_totals.append((spec, u * spec.quantity))
         list_sum = sum(lt for _s, lt in line_totals)
         bp = bundle.bundle_price

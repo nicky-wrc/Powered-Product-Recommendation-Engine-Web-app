@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, startTransition } from "react";
 
 import {
   adminListOrders,
@@ -35,7 +35,9 @@ export default function AdminOrdersPage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    startTransition(() => {
+      void load();
+    });
   }, [load]);
 
   async function saveShipment(o: OrderPublic, opts: { mark_shipped?: boolean; mark_delivered?: boolean }) {

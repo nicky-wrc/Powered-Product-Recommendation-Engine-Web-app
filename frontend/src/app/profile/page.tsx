@@ -279,6 +279,13 @@ export default function ProfilePage() {
             <Link href="/stock-alerts" className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400">
               แจ้งเตือนสต็อก
             </Link>
+            <span className="text-stone-400 dark:text-stone-500"> · </span>
+            <Link
+              href="/gift-registries/manage"
+              className="font-semibold text-teal-700 underline-offset-2 hover:underline dark:text-teal-400"
+            >
+              รายการของขวัญ
+            </Link>
           </p>
         </div>
 
