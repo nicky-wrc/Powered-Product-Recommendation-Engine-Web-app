@@ -25,12 +25,28 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: recengine
+          POSTGRES_PASSWORD: recengine
+          POSTGRES_DB: recengine
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U recengine -d recengine"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     defaults:
       run:
         working-directory: backend
     env:
       SECRET_KEY: ci-not-for-production
-      SKIP_DB_BOOTSTRAP: "1"
+      DATABASE_URL: postgresql+psycopg://recengine:recengine@127.0.0.1:5432/recengine
+      # Run create_all + demo seed on startup so API tests have a real schema + catalog.
+      SKIP_DB_BOOTSTRAP: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
